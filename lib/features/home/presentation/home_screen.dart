@@ -471,51 +471,103 @@ class _DailySummary extends StatelessWidget {
       children: [
         const _SectionHeading(title: 'Tu movimiento'),
         const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _StatCard(
-                icon: Icons.spa_outlined,
-                value: items == null ? '—' : '$published',
-                label: 'Lotes publicados',
-                detail: items == null ? null : 'Visibles para compradores',
-                tint: const Color(0xFFE8F5E9),
-                loading: isLoading,
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: _StatCard(
+                  icon: Icons.spa_outlined,
+                  value: items == null ? '—' : '$published',
+                  label: 'Lotes publicados',
+                  detail: items == null ? null : 'En el mercado',
+                  tint: const Color(0xFFE8F5E9),
+                  loading: isLoading,
+                  onTap: () => context.go('/lotes?status=published'),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _StatCard(
-                icon: Icons.inventory_2_outlined,
-                value: items == null ? '—' : '$drafts',
-                label: 'Borradores',
-                detail: items == null ? null : 'Por completar o publicar',
-                tint: const Color(0xFFF2E9DF),
-                loading: isLoading,
+              const SizedBox(width: 12),
+              Expanded(
+                child: _StatCard(
+                  icon: Icons.inventory_2_outlined,
+                  value: items == null ? '—' : '$drafts',
+                  label: 'Borradores',
+                  detail: items == null ? null : 'Aún no publicados',
+                  tint: const Color(0xFFF2E9DF),
+                  loading: isLoading,
+                  onTap: () => context.go('/lotes?status=draft'),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         if (!isLoading && items != null && published == 0) ...[
           const SizedBox(height: 12),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: .74),
-              borderRadius: BorderRadius.circular(20),
+              color: Colors.white.withValues(alpha: .96),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: AppTheme.mint),
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SvgPicture.asset(_isotypePath, width: 32, height: 32),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Aún no tienes lotes publicados. ¡Publica el primero!',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontSize: 14,
-                          color: AppTheme.ink,
-                        ),
+                Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: const BoxDecoration(
+                        color: AppTheme.mint,
+                        shape: BoxShape.circle,
+                      ),
+                      alignment: Alignment.center,
+                      child:
+                          SvgPicture.asset(_isotypePath, width: 29, height: 29),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Tu cosecha puede empezar aquí',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontSize: 16),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            'Publica un lote para que compradores lo encuentren.',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  color: AppTheme.ink.withValues(alpha: .76),
+                                  fontSize: 13,
+                                  height: 1.35,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: () => context.go('/lotes?intent=publish'),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Publicar mi primer lote'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(50),
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                   ),
                 ),
               ],
@@ -535,6 +587,7 @@ class _StatCard extends StatelessWidget {
     required this.detail,
     required this.tint,
     required this.loading,
+    required this.onTap,
   });
 
   final IconData icon;
@@ -543,74 +596,101 @@ class _StatCard extends StatelessWidget {
   final String? detail;
   final Color tint;
   final bool loading;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) => _RevealIn(
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 154),
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: .94),
-            borderRadius: const BorderRadius.only(
+        child: Material(
+          color: Colors.white.withValues(alpha: .96),
+          elevation: 0,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.only(
               topLeft: Radius.circular(24),
               topRight: Radius.circular(24),
               bottomLeft: Radius.circular(24),
               bottomRight: Radius.circular(42),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.forest.withValues(alpha: .07),
-                blurRadius: 22,
-                offset: const Offset(0, 8),
-              ),
-            ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(color: tint, shape: BoxShape.circle),
-                child: Icon(icon, color: AppTheme.forest, size: 22),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (loading)
-                    const _SkeletonBlock(width: 42, height: 30)
-                  else
-                    Text(value,
-                        style: Theme.of(context)
-                            .textTheme
-                            .headlineMedium
-                            ?.copyWith(
-                          color: AppTheme.ink,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        )),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(label,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(fontSize: 15)),
-                    ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 154),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(24),
+                  topRight: Radius.circular(24),
+                  bottomLeft: Radius.circular(24),
+                  bottomRight: Radius.circular(42),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.forest.withValues(alpha: .07),
+                    blurRadius: 22,
+                    offset: const Offset(0, 8),
                   ),
                 ],
               ),
-              if (detail != null) ...[
-                const SizedBox(height: 3),
-                Text(detail!,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(fontSize: 13)),
-              ],
-            ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration:
+                            BoxDecoration(color: tint, shape: BoxShape.circle),
+                        child: Icon(icon, color: AppTheme.forest, size: 21),
+                      ),
+                      Icon(Icons.chevron_right_rounded,
+                          color: AppTheme.forest.withValues(alpha: .72),
+                          size: 23),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  if (loading)
+                    const _SkeletonBlock(width: 42, height: 37)
+                  else
+                    Text(
+                      value,
+                      style:
+                          Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        color: AppTheme.forest,
+                        fontSize: 32,
+                        height: 1.05,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  const SizedBox(height: 4),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: AppTheme.ink,
+                          fontSize: 14,
+                          height: 1.25,
+                        ),
+                  ),
+                  if (detail != null) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      detail!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: AppTheme.ink.withValues(alpha: .72),
+                            fontSize: 12,
+                            height: 1.25,
+                          ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
         ),
       );

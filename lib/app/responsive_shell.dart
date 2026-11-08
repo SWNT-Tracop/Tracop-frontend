@@ -72,6 +72,8 @@ class ResponsiveShell extends ConsumerWidget {
           appBar: AppBar(
             elevation: 0,
             scrolledUnderElevation: 0,
+            centerTitle: false,
+            toolbarHeight: 61,
             backgroundColor: const Color(0xFFFDFBF3),
             bottom: const PreferredSize(
               preferredSize: Size.fromHeight(1),
@@ -86,34 +88,34 @@ class ResponsiveShell extends ConsumerWidget {
                   fit: BoxFit.contain,
                   semanticsLabel: 'TRACOP Agro',
                 ),
-                const SizedBox(width: 8),
-                CircleAvatar(
-                  radius: 16,
-                  backgroundColor: AppTheme.mint,
-                  foregroundColor: AppTheme.forest,
-                  child: Text(avatarLetter,
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: AppTheme.ink,
-                          fontSize: 13,
-                        ),
-                  ),
-                ),
               ],
             ),
             actions: [
               Tooltip(
                 message: syncLabel,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: Icon(syncIcon, color: syncColor, size: 22),
+                ),
+              ),
+              Tooltip(
+                message: 'Perfil: $displayName',
+                child: InkWell(
+                  onTap: () => context.go('/perfil'),
+                  borderRadius: BorderRadius.circular(24),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    child: CircleAvatar(
+                      radius: 17,
+                      backgroundColor: AppTheme.mint,
+                      foregroundColor: AppTheme.forest,
+                      child: Text(
+                        avatarLetter,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
