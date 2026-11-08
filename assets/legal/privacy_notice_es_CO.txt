@@ -1,0 +1,33 @@
+TRACOP — AVISO DE PRIVACIDAD
+Versión: borrador v0-draft
+Estado: BORRADOR PARA REVISIÓN DEL EQUIPO Y ASESORÍA JURÍDICA. No usar como versión legal aprobada.
+
+1. Responsable del tratamiento
+La identidad legal del responsable, su domicilio y sus canales para consultas, reclamos y solicitudes deben completarse antes de publicar este aviso:
+[RAZÓN SOCIAL O NOMBRE DEL RESPONSABLE]
+[DOMICILIO]
+[CORREO Y CANAL DE ATENCIÓN DE DATOS PERSONALES]
+
+2. Información que puede tratar TRACOP
+Según las funciones que uses, la plataforma puede tratar nombre, número de celular, rol (productor, proveedor, comprador o transportador), idioma, datos de perfil y ubicación que decidas compartir; información de productos, lotes, pedidos, cotizaciones, entregas y pagos manualmente conciliados; datos técnicos del dispositivo, sesión y seguridad; y comunicaciones enviadas a soporte o por canales de mensajería vinculados.
+
+3. Finalidades
+La información se utiliza para crear y proteger cuentas, verificar el número celular mediante códigos temporales, permitir el uso de las funciones según el rol, publicar y descubrir productos, coordinar solicitudes y logística, dar seguimiento a operaciones, atender consultas, prevenir fraude o abuso, mantener la seguridad y cumplir obligaciones legales aplicables. Cada finalidad y dato debe limitarse a lo necesario para prestar la función solicitada.
+
+4. Almacenamiento y terceros
+Algunos datos necesarios pueden almacenarse localmente en el dispositivo para permitir consulta sin conexión y sincronizarse cuando vuelva la conectividad. Para operar, TRACOP puede apoyarse en proveedores tecnológicos de infraestructura, mensajería y almacenamiento, bajo las condiciones y garantías que se definan. Completar antes de producción: [PROVEEDORES Y CATEGORÍAS], [PAÍSES DE ALMACENAMIENTO O TRANSFERENCIA] y [MEDIDAS/CONTRATOS APLICABLES].
+
+5. Conservación y seguridad
+TRACOP aplicará medidas razonables de seguridad y conservará la información solo durante los plazos necesarios para las finalidades y obligaciones legales. Los plazos concretos, reglas de eliminación y datos que deban conservarse por obligación legal están pendientes de definición: [PLAZOS DE RETENCIÓN POR CATEGORÍA].
+
+6. Derechos y solicitudes
+De acuerdo con la normativa colombiana de protección de datos personales, puedes solicitar información sobre tus datos y presentar consultas o reclamos al responsable por el canal que se publique. El procedimiento, los plazos de respuesta y el canal para solicitar actualización, corrección, prueba de autorización o supresión deben completarse antes del lanzamiento: [PROCEDIMIENTO Y CANAL]. La supresión puede estar sujeta a deberes legales de conservación.
+
+7. Autorización y cambios
+Al registrarte, la app solicita aceptar la versión del aviso indicada en pantalla. La versión vigente y su fecha deben ser aprobadas y publicadas por TRACOP. Si el aviso cambia, se debe informar a las personas y solicitar una nueva autorización cuando corresponda.
+
+PENDIENTES ANTES DE PRODUCCIÓN
+- Completar responsable, contacto y procedimiento de atención de derechos.
+- Definir proveedores, transferencias, retención y medidas aplicables.
+- Aprobar el texto y la versión con asesoría jurídica colombiana.
+- No sustituye una política de tratamiento de datos personales completa cuando esta sea requerida.
