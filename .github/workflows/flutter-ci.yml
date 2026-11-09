@@ -13,6 +13,21 @@ permissions:
   contents: read
 
 jobs:
+  snyk-security:
+    name: Snyk Code security scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Snyk CLI
+        uses: snyk/actions/setup@11b673cfb4b0dc0d860a1323caa199d54950dcce # pinned commit
+
+      - name: Scan Dart and Flutter code
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: snyk code test --severity-threshold=high
+
   flutter-quality:
     name: Flutter analyze and test
     runs-on: ubuntu-latest
