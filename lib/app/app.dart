@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'app/router.dart';
-import 'app/theme.dart';
+import './router.dart';
+import './theme.dart';
 
 class TracopApp extends ConsumerWidget {
   const TracopApp({super.key});
@@ -12,6 +12,7 @@ class TracopApp extends ConsumerWidget {
     return MaterialApp.router(
       title: 'TRACOP',
       theme: AppTheme.light,
+      themeMode: ThemeMode.light,
       routerConfig: router,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,

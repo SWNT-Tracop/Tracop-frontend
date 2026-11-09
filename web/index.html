@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="TRACOP conecta la oferta agropecuaria con quienes la necesitan.">
+  <meta name="theme-color" content="#115E26">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="TRACOP">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>TRACOP — Abastecimiento agropecuario</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    #tracop-boot {
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      display: grid;
+      place-content: center;
+      gap: 18px;
+      background: #F7F7F2;
+      color: #1B5E20;
+      font-family: Inter, Arial, sans-serif;
+      transition: opacity 160ms ease-out;
+    }
+    #tracop-boot.is-ready { opacity: 0; pointer-events: none; }
+    #tracop-boot .mark { width: 84px; height: 72px; margin: 0 auto; }
+    #tracop-boot .wordmark { text-align: center; font-size: 19px; font-weight: 700; letter-spacing: .16em; }
+    #tracop-boot .leaf {
+      fill: transparent;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 240;
+      stroke-dashoffset: 240;
+      animation: tracop-leaf-draw 1.05s cubic-bezier(.4, 0, .2, 1) forwards;
+    }
+    #tracop-boot .leaf-dark { color: #2E7D32; stroke: #2E7D32; animation-delay: 80ms; }
+    #tracop-boot .leaf-light { color: #8CC63F; stroke: #8CC63F; animation-delay: 220ms; }
+    @keyframes tracop-leaf-draw {
+      66% { stroke-dashoffset: 0; fill: transparent; }
+      100% { stroke-dashoffset: 0; fill: currentColor; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #tracop-boot, #tracop-boot .leaf { transition: none; animation: none; }
+      #tracop-boot .leaf { stroke-dashoffset: 0; fill: currentColor; }
+    }
+  </style>
+</head>
+<body>
+  <div id="tracop-boot" role="status" aria-label="Cargando TRACOP">
+    <svg class="mark" viewBox="0 0 162 140" aria-hidden="true">
+      <g transform="translate(20 20)">
+        <path class="leaf leaf-dark" d="M60 84 C64 48 44 22 14 17 Q7 16 8 23 C10 56 28 84 60 84 Z"/>
+        <path class="leaf leaf-light" d="M62 84 C58 48 78 22 108 17 Q115 16 114 23 C112 56 94 84 62 84 Z"/>
+      </g>
+    </svg>
+    <div class="wordmark">TRACOP</div>
+  </div>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

@@ -65,6 +65,10 @@ La app está pensada para la realidad del campo: conectividad inestable, poco ti
 
 ## Cómo se ejecuta
 
+### Integración continua
+
+GitHub Actions ejecuta `flutter analyze` y `flutter test`.
+
 ### Requisitos
 
 - Flutter 3.x con Dart 3.x

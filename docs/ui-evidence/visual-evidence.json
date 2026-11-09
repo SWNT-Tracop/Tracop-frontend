@@ -1,0 +1,108 @@
+{
+  "schemaVersion": "uizze.visual-evidence.v1",
+  "scope": "TRACOP home visual refresh and responsive navigation shell",
+  "platform": "web",
+  "sources": [
+    {
+      "path": "../../lib/app/theme.dart",
+      "sha256": "ce4ca9f390163d228a4b7a24adfc5a4f130e1d7813e2639b1970e75ec5803c47"
+    },
+    {
+      "path": "../../lib/app/responsive_shell.dart",
+      "sha256": "95a5eaa62be824d7fb5b68d75cbb1f245d9c330b78681f610b27c064c67ffb9d"
+    },
+    {
+      "path": "../../lib/app/router.dart",
+      "sha256": "0fd1e3c4e2927c26a754188b58ef6be9ce00ed06efdb40a9d866449a37b6c7e4"
+    },
+    {
+      "path": "../../lib/features/home/presentation/home_screen.dart",
+      "sha256": "e46cab29e57f25cc1daeb4e25a0b93ddf2bab98ee4a3ad37e382d5dfb446c142"
+    },
+    {
+      "path": "../../test/widget_test.dart",
+      "sha256": "ae468b361c24a368fa462bbb32b9fa7c276dc706f307141a9e239975fc54c02d"
+    },
+    {
+      "path": "../../assets/fonts/InterVariable.ttf",
+      "sha256": "4989b125924991b90d05b2d16e0e388c48f7d5bb8b30539bbf9c755278d0ccaf"
+    },
+    {
+      "path": "../../assets/branding/tracop-isotipo.svg",
+      "sha256": "aac5497b596de6d7c591f2ec24e8df33f97a6dd2a2bdee22949b0694a9abc73e"
+    }
+  ],
+  "comparison": "existing-system",
+  "requiredChecks": [
+    { "id": "home-desktop", "kind": "visual" },
+    { "id": "home-tablet", "kind": "visual" },
+    { "id": "home-mobile", "kind": "visual" }
+  ],
+  "checks": [
+    {
+      "id": "home-desktop",
+      "status": "pass",
+      "state": "Home, default state",
+      "environment": {
+        "kind": "browser",
+        "name": "Google Chrome headless",
+        "width": 1440,
+        "height": 1000
+      },
+      "observed": "Expanded navigation uses the official TRACOP wordmark; the home combines a personalized greeting, organic masked photo slot with the official leaf fallback, one connection/error banner with one retry action, primary action in the hero, live lot summary and quick tasks aligned in two columns. The API was unreachable in this capture, so counts remain placeholders instead of fabricated values.",
+      "artifacts": [
+        {
+          "path": "home-desktop-1440x1000.png",
+          "kind": "image",
+      "sha256": "44cb2a771979a510f9809ccadf43b614cae3b248d7ee970f0ef90f523b5abef6"
+        }
+      ]
+    },
+    {
+      "id": "home-tablet",
+      "status": "pass",
+      "state": "Home, compact navigation rail",
+      "environment": {
+        "kind": "browser",
+        "name": "Google Chrome headless",
+        "width": 800,
+        "height": 900
+      },
+      "observed": "At tablet width the hero keeps greeting, CTA and masked photo slot side by side while the summary and tasks stack below; the top bar includes identity and sync status.",
+      "artifacts": [
+        {
+          "path": "home-tablet-800x900.png",
+          "kind": "image",
+      "sha256": "7015fea51920af5c2a6f854d008c9f8f587dd7d5a75280bd79cb40ea28317c4c"
+        }
+      ]
+    },
+    {
+      "id": "home-mobile",
+      "status": "pass",
+      "state": "Home, bottom navigation",
+      "environment": {
+        "kind": "browser",
+        "name": "Google Chrome headless",
+        "width": 390,
+        "height": 844
+      },
+      "observed": "Mobile keeps the brand, avatar, user name and sync status in the top bar; greeting, CTA and masked image slot stack inside the hero. The single retry button wraps below banner copy to preserve readable text and touch size.",
+      "artifacts": [
+        {
+          "path": "home-mobile-390x844.png",
+          "kind": "image",
+      "sha256": "088f2ac7d6bc4ca1114c12f07e2ed105c7a82733a83d31c2199f5364400b016d"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "The image-generation service rejected the request twice. A real photograph has not been bundled or represented by synthetic artwork; the photo slot currently shows a restrained brand fallback. Add an authorized photo as assets/images/campesino-cosecha.jpg to complete the requested photograph treatment.",
+    "The primary action and return navigation are covered by a Flutter widget test; mouse, keyboard-focus and touch gestures were not exercised in a live browser. Captures document rendered layouts only.",
+    "The UI reads the stored user name and /lots/mine endpoint. This frontend has no orders model or endpoint, so it does not display invented order counts. Authentication, catalog, lots and profile routes outside Home remain informational placeholders."
+  ],
+  "unresolved": [
+    "Authorized real field photograph required at assets/images/campesino-cosecha.jpg."
+  ]
+}

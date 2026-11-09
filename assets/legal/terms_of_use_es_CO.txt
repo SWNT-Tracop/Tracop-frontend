@@ -1,0 +1,36 @@
+TRACOP — TÉRMINOS DE USO
+Versión: borrador v0-draft
+Estado: BORRADOR PARA REVISIÓN DEL EQUIPO Y ASESORÍA JURÍDICA. No usar como versión legal aprobada.
+
+1. ¿Qué es TRACOP?
+TRACOP es una plataforma digital para conectar productores y proveedores agropecuarios con compradores profesionales, y facilitar la coordinación de transporte. En el piloto, TRACOP actúa como intermediario tecnológico y coordinador: no compra ni mantiene inventario propio. La existencia, calidad, cantidad y disponibilidad de cada producto deben confirmarse con su proveedor antes de cerrar una operación.
+
+2. Quién puede usar el servicio
+La plataforma está dirigida a productores, proveedores, compradores, transportadores y personal operador autorizado. Al crear una cuenta, cada persona debe entregar información propia y veraz, escoger el rol que corresponda y proteger el acceso a su cuenta. La verificación de un proveedor puede requerir revisión manual y no equivale por sí sola a una garantía de calidad o cumplimiento.
+
+3. Publicaciones y disponibilidad
+Quien publica un producto o lote es responsable de que la descripción, origen, cantidad, unidad, precio, calidad, ubicación y fechas sean correctos y de tener autorización para ofrecerlo. Una publicación no constituye una venta confirmada. La disponibilidad y las condiciones deben confirmarse antes de aceptar un pedido o cotización.
+
+4. Pedidos, cotizaciones y coordinación
+La app puede facilitar solicitudes, cotizaciones, aceptación de condiciones y seguimiento de estados. Antes de confirmar una operación, las partes deben revisar producto, cantidad, precio, entrega y demás condiciones mostradas. TRACOP puede coordinar el transporte y comunicar novedades, pero las partes deben aportar información correcta y colaborar para completar la operación.
+
+5. Precios, comisiones, fletes y pagos
+Los valores aplicables —incluidos precio del producto, comisión y flete— deben informarse de forma clara antes de confirmar cada operación. Las tarifas, quién asume la comisión y las condiciones de cada corredor están pendientes de definición comercial; este borrador no fija porcentajes ni tarifas. Durante el piloto, el pago puede acordarse por medios manuales informados en la operación. La app no debe entenderse como una pasarela de pagos ni como custodia automática de fondos.
+
+6. Cancelaciones, reclamos y soporte
+Las reglas definitivas de cancelación, devoluciones, productos no conformes, entregas incompletas, tiempos de reclamo y escalamiento están pendientes de aprobación. Mientras se definen, las partes deben conservar la información de la operación y contactar al canal oficial de soporte que TRACOP publique. Completar antes de publicación: [CANAL DE SOPORTE], [PLAZOS] y [PROCEDIMIENTO DE RECLAMOS].
+
+7. Uso permitido
+No se permite publicar información engañosa, ofrecer productos sin autorización, suplantar personas, interferir con la plataforma ni usarla para actividades ilícitas. TRACOP puede investigar reportes y aplicar medidas proporcionales conforme a una política de moderación y apelación que debe aprobarse antes del lanzamiento.
+
+8. Datos personales
+El tratamiento de datos personales se explica en el Aviso de Privacidad de TRACOP, documento separado de estos términos. El uso de la plataforma requiere revisar ese aviso y otorgar los consentimientos que correspondan.
+
+9. Cambios y vigencia
+La versión aprobada, su fecha de vigencia y el mecanismo para notificar cambios se deben definir antes de publicar estos términos. Completar: [FECHA DE VIGENCIA], [RAZÓN SOCIAL RESPONSABLE] y [CANAL DE NOTIFICACIONES].
+
+PENDIENTES ANTES DE PRODUCCIÓN
+- Identificar la entidad responsable de TRACOP y sus datos de contacto.
+- Aprobar tarifas, comisión, fletes, pagos, cancelaciones, reclamos y soporte.
+- Definir moderación, suspensión de cuentas y mecanismo de apelación.
+- Revisar el texto con asesoría jurídica colombiana y publicar una versión aprobada.
