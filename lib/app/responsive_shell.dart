@@ -237,20 +237,11 @@ class _SyncBadge extends StatelessWidget {
   final Color color;
 
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: AppTheme.mint.withValues(alpha: .72),
-          borderRadius: BorderRadius.circular(999),
+  Widget build(BuildContext context) => Tooltip(
+        message: label,
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Icon(icon, size: 20, color: color),
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 17, color: color),
-          const SizedBox(width: 7),
-          Text(label,
-              style: Theme.of(context)
-                  .textTheme
-                  .labelLarge
-                  ?.copyWith(color: color, fontSize: 13)),
-        ]),
       );
 }

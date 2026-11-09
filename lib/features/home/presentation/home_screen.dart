@@ -1,8 +1,6 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/theme.dart';
@@ -11,14 +9,7 @@ import '../../auth/presentation/providers/auth_provider.dart';
 import '../../catalog/domain/entities/lot.dart' hide Category, Product;
 import '../../catalog/presentation/providers/catalog_provider.dart';
 
-const _isotypePath = 'assets/branding/tracop-isotipo.svg';
-const _harvestPhotoPath = 'assets/images/campesino-cosecha.jpg';
-
 final homeLotsCacheProvider = StateProvider<List<Lot>?>((ref) => null);
-final homePhotoAvailableProvider = FutureProvider<bool>((ref) async {
-  final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
-  return manifest.listAssets().contains(_harvestPhotoPath);
-});
 
 final homeUserProvider = FutureProvider<User?>((ref) async {
   final result = await ref.read(authRepositoryProvider).getStoredUser();
@@ -53,761 +44,303 @@ class HomeScreen extends ConsumerWidget {
     final user = ref.watch(homeUserProvider).valueOrNull;
     final lots = ref.watch(homeLotsProvider);
     final cachedLots = ref.watch(homeLotsCacheProvider);
-    final connectivity = ref.watch(homeConnectivityProvider);
-    final photoAvailable =
-        ref.watch(homePhotoAvailableProvider).valueOrNull ?? false;
-    final greeting = _greeting(DateTime.now(), user?.fullName);
+    final connectivity = ref.watch(homeConnectivityProvider).valueOrNull;
+    final items = lots.valueOrNull ?? cachedLots;
+    final isSeller = user?.role == 'producer' || user?.role == 'supplier';
+    final displayName = user?.fullName.trim().split(RegExp(r'\s+')).firstOrNull;
+    final greeting = _greeting(DateTime.now(), displayName);
+    final published = items?.where((lot) => lot.status == 'published').length;
+    final drafts = items?.where((lot) => lot.status == 'draft').length;
+
+    final action = _primaryAction(
+      isSeller: isSeller,
+      hasLotsData: items != null,
+      published: published ?? 0,
+      drafts: drafts ?? 0,
+    );
 
     return LayoutBuilder(
-      builder: (context, viewport) {
-        final wide = viewport.maxWidth >= 960;
-        final heroWide = viewport.maxWidth >= 700;
-        final content = Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1320),
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(wide ? 48 : 20, wide ? 36 : 24,
-                  wide ? 48 : 20, wide ? 48 : 36),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _WelcomePanel(
-                    greeting: greeting,
-                    wide: heroWide,
-                    onExplore: () => context.go('/buscar'),
-                    photoAvailable: photoAvailable,
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 900;
+        return ColoredBox(
+          color: AppTheme.background,
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1120),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    wide ? 40 : 20,
+                    wide ? 36 : 20,
+                    wide ? 40 : 20,
+                    wide ? 40 : 24,
                   ),
-                  const SizedBox(height: 20),
-                  _ConnectionBanner(
-                    connectivity: connectivity,
-                    lots: lots,
-                    onRetry: () => ref.invalidate(homeLotsProvider),
-                  ),
-                  const SizedBox(height: 30),
-                  if (wide)
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          flex: 11,
-                          child: _DailySummary(
-                            lots: lots,
-                            cachedLots: cachedLots,
-                          ),
-                        ),
-                        const SizedBox(width: 24),
-                        const Expanded(flex: 9, child: _QuickTasks()),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _WelcomeBlock(
+                        greeting: greeting,
+                        isSeller: isSeller,
+                        isFirstLot: isSeller &&
+                            published == 0 &&
+                            drafts == 0 &&
+                            items != null,
+                        actionLabel: action.label,
+                        onAction: () => context.go(action.path),
+                      ),
+                      if (connectivity == false) ...[
+                        const SizedBox(height: 20),
+                        const _OfflineNotice(),
                       ],
-                    )
-                  else ...[
-                    _DailySummary(
-                      lots: lots,
-                      cachedLots: cachedLots,
-                    ),
-                    const SizedBox(height: 26),
-                    const _QuickTasks(),
-                  ],
-                ],
+                      if (lots.hasError && connectivity != false) ...[
+                        const SizedBox(height: 20),
+                        _LoadErrorNotice(
+                          onRetry: () => ref.invalidate(homeLotsProvider),
+                        ),
+                      ],
+                      if (isSeller) ...[
+                        const SizedBox(height: 32),
+                        _SellerActivity(
+                          lots: items,
+                          loading: lots.isLoading && items == null,
+                          onPublishedTap: () =>
+                              context.go('/lotes?status=published'),
+                          onDraftsTap: () => context.go('/lotes?status=draft'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
-        );
-
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [AppTheme.background, Color(0xFFF0F6EB)],
-                  ),
-                ),
-                child: CustomPaint(painter: _FieldWashPainter()),
-              ),
-            ),
-            SingleChildScrollView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              child: content,
-            ),
-          ],
         );
       },
     );
   }
 }
 
-String _greeting(DateTime now, String? fullName) {
-  final hour = now.hour;
-  final salutation = hour >= 5 && hour < 12
-      ? 'Buenos días'
-      : hour >= 12 && hour < 19
-          ? 'Buenas tardes'
-          : 'Buenas noches';
-  final firstName = fullName?.trim().split(RegExp(r'\s+')).firstOrNull;
-  return firstName == null || firstName.isEmpty
-      ? '$salutation. ¿Qué vamos a mover hoy?'
-      : '$salutation, $firstName. ¿Qué vamos a mover hoy?';
+({String label, String path}) _primaryAction({
+  required bool isSeller,
+  required bool hasLotsData,
+  required int published,
+  required int drafts,
+}) {
+  if (!isSeller) return (label: 'Buscar lotes', path: '/buscar');
+  if (!hasLotsData) {
+    return (label: 'Publicar lote', path: '/lotes?intent=create');
+  }
+  if (published == 0 && drafts == 0) {
+    return (label: 'Publicar mi primer lote', path: '/lotes?intent=create');
+  }
+  if (published == 0 && drafts > 0) {
+    return (label: 'Ver mis borradores', path: '/lotes?status=draft');
+  }
+  return (label: 'Publicar otro lote', path: '/lotes?intent=create');
 }
 
-class _WelcomePanel extends StatelessWidget {
-  const _WelcomePanel({
+String _greeting(DateTime now, String? firstName) {
+  final salutation = now.hour >= 5 && now.hour < 12
+      ? 'Buenos días'
+      : now.hour >= 12 && now.hour < 19
+          ? 'Buenas tardes'
+          : 'Buenas noches';
+  if (firstName == null || firstName.isEmpty) return '$salutation.';
+  return '$salutation, $firstName.';
+}
+
+class _WelcomeBlock extends StatelessWidget {
+  const _WelcomeBlock({
     required this.greeting,
-    required this.wide,
-    required this.onExplore,
-    required this.photoAvailable,
+    required this.isSeller,
+    required this.isFirstLot,
+    required this.actionLabel,
+    required this.onAction,
   });
 
   final String greeting;
-  final bool wide;
-  final VoidCallback onExplore;
-  final bool photoAvailable;
-
-  @override
-  Widget build(BuildContext context) {
-    final art = ClipPath(
-      clipper: const _LeafPhotoClipper(),
-      child: AspectRatio(
-        aspectRatio: wide ? 1.78 : 2.8,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (photoAvailable)
-              Image.asset(
-                _harvestPhotoPath,
-                fit: BoxFit.cover,
-                alignment: const Alignment(0.62, 0),
-              )
-            else
-              const _PhotoAwaitingAsset(),
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [Color(0xDDE8F5E9), Color(0x00E8F5E9)],
-                  stops: [0, .82],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFFFFCF4), Color(0xFFF0F5E7)],
-        ),
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(28),
-          topRight: Radius.circular(28),
-          bottomLeft: Radius.circular(28),
-          bottomRight: Radius.circular(56),
-        ),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            right: wide ? 20 : 12,
-            top: 12,
-            child: IgnorePointer(
-              child: Opacity(
-                opacity: .07,
-                child: SvgPicture.asset(
-                  _isotypePath,
-                  width: wide ? 148 : 112,
-                  height: wide ? 126 : 96,
-                ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.all(wide ? 28 : 20),
-            child: wide
-                ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        flex: 11,
-                        child: _welcomeCopy(context),
-                      ),
-                      const SizedBox(width: 28),
-                      Expanded(flex: 9, child: art),
-                    ],
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _welcomeCopy(context),
-                      const SizedBox(height: 18),
-                      SizedBox(width: double.infinity, child: art),
-                    ],
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _welcomeCopy(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: [
-          Text(
-            greeting,
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  color: AppTheme.forest,
-                  fontSize: wide ? 29 : 25,
-                  height: 1.18,
-                ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'De la finca al mercado, paso a paso.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppTheme.mutedText,
-                ),
-          ),
-          const SizedBox(height: 20),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 320),
-            child: SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: FilledButton.icon(
-                onPressed: onExplore,
-                icon: const Icon(Icons.storefront_outlined),
-                label: const Text('Explorar lotes'),
-                style: FilledButton.styleFrom(
-                  elevation: 1,
-                  shadowColor: AppTheme.forest.withValues(alpha: .16),
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
-}
-
-class _LeafPhotoClipper extends CustomClipper<Path> {
-  const _LeafPhotoClipper();
-
-  @override
-  Path getClip(Size size) {
-    final path = Path()
-      ..moveTo(0, 28)
-      ..quadraticBezierTo(0, 0, 30, 0)
-      ..lineTo(size.width - 42, 0)
-      ..cubicTo(size.width - 10, 0, size.width, 12, size.width, 42)
-      ..lineTo(size.width, size.height - 44)
-      ..cubicTo(size.width, size.height - 12, size.width - 18, size.height,
-          size.width - 50, size.height)
-      ..cubicTo(size.width * .68, size.height * .94, size.width * .42,
-          size.height * 1.04, size.width * .2, size.height)
-      ..lineTo(32, size.height)
-      ..quadraticBezierTo(0, size.height, 0, size.height - 32)
-      ..close();
-    return path;
-  }
-
-  @override
-  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
-}
-
-class _PhotoAwaitingAsset extends StatelessWidget {
-  const _PhotoAwaitingAsset();
-
-  @override
-  Widget build(BuildContext context) => DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFE8F5E9), Color(0xFFE4D6C6)],
-          ),
-        ),
-        child: Center(
-          child: SvgPicture.asset(
-            _isotypePath,
-            width: 84,
-            height: 72,
-            semanticsLabel: 'Cosecha TRACOP',
-          ),
-        ),
-      );
-}
-
-class _ConnectionBanner extends StatelessWidget {
-  const _ConnectionBanner({
-    required this.connectivity,
-    required this.lots,
-    required this.onRetry,
-  });
-
-  final AsyncValue<bool> connectivity;
-  final AsyncValue<List<Lot>> lots;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final reducedMotion = MediaQuery.disableAnimationsOf(context);
-    final bool? connected = connectivity.valueOrNull;
-    final isLoading = connected == true && lots.isLoading;
-    final failed = connected == true && lots.hasError;
-    final offline = connected == false;
-    final statusColor = offline || failed ? AppTheme.earth : AppTheme.forest;
-    final title = offline
-        ? 'Sin conexión'
-        : failed
-            ? 'No pudimos actualizar tus lotes'
-            : isLoading
-                ? 'Revisando tus lotes'
-                : connected == true
-                    ? 'Conexión disponible'
-                    : 'Revisando conexión';
-    final detail = offline
-        ? 'Volvemos a actualizar cuando regrese la señal.'
-        : failed
-            ? 'Revisa la señal y vuelve a intentarlo.'
-            : isLoading
-                ? 'Un momento, estamos alistando la jornada.'
-                : connected == true
-                    ? 'La conexión está lista para tus tareas.'
-                    : 'Comprobando la señal de este dispositivo.';
-    final statusCopy = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title,
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
-                ?.copyWith(color: AppTheme.ink)),
-        const SizedBox(height: 3),
-        Text(detail,
-            style:
-                Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 14)),
-      ],
-    );
-    final retryButton = OutlinedButton(
-      onPressed: onRetry,
-      child: const Text('Reintentar'),
-    );
-
-    return _RevealIn(
-      child: Material(
-        color: Colors.white.withValues(alpha: .88),
-        borderRadius: BorderRadius.circular(22),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              if (constraints.maxWidth < 440) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        _SwayingLeaf(
-                            color: statusColor, disabled: reducedMotion),
-                        const SizedBox(width: 14),
-                        Expanded(child: statusCopy),
-                        if (isLoading) ...[
-                          const SizedBox(width: 8),
-                          const _LeafLoadingMark(size: 28),
-                        ],
-                      ],
-                    ),
-                    if ((failed || offline) && !isLoading) ...[
-                      const SizedBox(height: 8),
-                      Align(
-                          alignment: Alignment.centerRight, child: retryButton),
-                    ],
-                  ],
-                );
-              }
-
-              return Row(
-                children: [
-                  _SwayingLeaf(color: statusColor, disabled: reducedMotion),
-                  const SizedBox(width: 14),
-                  Expanded(child: statusCopy),
-                  if (isLoading) ...[
-                    const SizedBox(width: 8),
-                    const _LeafLoadingMark(size: 32),
-                  ] else if (failed || offline)
-                    retryButton,
-                ],
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DailySummary extends StatelessWidget {
-  const _DailySummary({required this.lots, required this.cachedLots});
-
-  final AsyncValue<List<Lot>> lots;
-  final List<Lot>? cachedLots;
-
-  @override
-  Widget build(BuildContext context) {
-    final items = lots.valueOrNull ?? cachedLots;
-    final isLoading = lots.isLoading && items == null;
-    final published =
-        items?.where((lot) => lot.status == 'published').length ?? 0;
-    final drafts = items?.where((lot) => lot.status == 'draft').length ?? 0;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _SectionHeading(title: 'Tu movimiento'),
-        const SizedBox(height: 12),
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: _StatCard(
-                  icon: Icons.spa_outlined,
-                  value: items == null ? '—' : '$published',
-                  label: 'Lotes publicados',
-                  detail: items == null ? null : 'En el mercado',
-                  tint: const Color(0xFFE8F5E9),
-                  loading: isLoading,
-                  onTap: () => context.go('/lotes?status=published'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _StatCard(
-                  icon: Icons.inventory_2_outlined,
-                  value: items == null ? '—' : '$drafts',
-                  label: 'Borradores',
-                  detail: items == null ? null : 'Aún no publicados',
-                  tint: const Color(0xFFF2E9DF),
-                  loading: isLoading,
-                  onTap: () => context.go('/lotes?status=draft'),
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (!isLoading && items != null && published == 0) ...[
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: .96),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: AppTheme.mint),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: const BoxDecoration(
-                        color: AppTheme.mint,
-                        shape: BoxShape.circle,
-                      ),
-                      alignment: Alignment.center,
-                      child:
-                          SvgPicture.asset(_isotypePath, width: 29, height: 29),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Tu cosecha puede empezar aquí',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(fontSize: 16),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            'Publica un lote para que compradores lo encuentren.',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(
-                                  color: AppTheme.ink.withValues(alpha: .76),
-                                  fontSize: 13,
-                                  height: 1.35,
-                                ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: () => context.go('/lotes?intent=publish'),
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('Publicar mi primer lote'),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(50),
-                    backgroundColor: AppTheme.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.icon,
-    required this.value,
-    required this.label,
-    required this.detail,
-    required this.tint,
-    required this.loading,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String value;
-  final String label;
-  final String? detail;
-  final Color tint;
-  final bool loading;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => _RevealIn(
-        child: Material(
-          color: Colors.white.withValues(alpha: .96),
-          elevation: 0,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(24),
-              topRight: Radius.circular(24),
-              bottomLeft: Radius.circular(24),
-              bottomRight: Radius.circular(42),
-            ),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            child: Container(
-              constraints: const BoxConstraints(minHeight: 154),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(24),
-                  topRight: Radius.circular(24),
-                  bottomLeft: Radius.circular(24),
-                  bottomRight: Radius.circular(42),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.forest.withValues(alpha: .07),
-                    blurRadius: 22,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration:
-                            BoxDecoration(color: tint, shape: BoxShape.circle),
-                        child: Icon(icon, color: AppTheme.forest, size: 21),
-                      ),
-                      Icon(Icons.chevron_right_rounded,
-                          color: AppTheme.forest.withValues(alpha: .72),
-                          size: 23),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  if (loading)
-                    const _SkeletonBlock(width: 42, height: 37)
-                  else
-                    Text(
-                      value,
-                      style:
-                          Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        color: AppTheme.forest,
-                        fontSize: 32,
-                        height: 1.05,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  const SizedBox(height: 4),
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: AppTheme.ink,
-                          fontSize: 14,
-                          height: 1.25,
-                        ),
-                  ),
-                  if (detail != null) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      detail!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: AppTheme.ink.withValues(alpha: .72),
-                            fontSize: 12,
-                            height: 1.25,
-                          ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-}
-
-class _SkeletonBlock extends StatelessWidget {
-  const _SkeletonBlock({required this.width, required this.height});
-
-  final double width;
-  final double height;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        width: width,
-        height: height,
-        decoration: BoxDecoration(
-          color: const Color(0xFFE8ECE5),
-          borderRadius: BorderRadius.circular(10),
-        ),
-      );
-}
-
-class _QuickTasks extends StatelessWidget {
-  const _QuickTasks();
-
-  static const tasks =
-      <({IconData icon, String title, String subtitle, String path})>[
-    (
-      icon: Icons.inventory_2_outlined,
-      title: 'Mis lotes',
-      subtitle: 'Revisa lo que tienes en camino',
-      path: '/lotes',
-    ),
-    (
-      icon: Icons.search,
-      title: 'Buscar productos',
-      subtitle: 'Encuentra lo que hace falta',
-      path: '/buscar',
-    ),
-    (
-      icon: Icons.person_outline,
-      title: 'Mi perfil',
-      subtitle: 'Mantén tus datos al día',
-      path: '/perfil',
-    ),
-  ];
+  final bool isSeller;
+  final bool isFirstLot;
+  final String actionLabel;
+  final VoidCallback onAction;
 
   @override
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionHeading(title: 'A mano'),
-          const SizedBox(height: 12),
-          for (final task in tasks) ...[
-            _QuickTaskCard(
-              icon: task.icon,
-              title: task.title,
-              subtitle: task.subtitle,
-              path: task.path,
+          Text(
+            greeting,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: AppTheme.mutedText,
+                  fontSize: 16,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            isSeller
+                ? isFirstLot
+                    ? 'Lleva tu cosecha al mercado.'
+                    : 'Tu oferta, más cerca de nuevos compradores.'
+                : 'Encuentra productos directo del campo.',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  color: AppTheme.forest,
+                  fontSize: 28,
+                  height: 1.2,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            isSeller
+                ? 'Publica y mantén al día tus lotes desde aquí.'
+                : 'Compara lotes disponibles para abastecer tu negocio.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppTheme.ink.withValues(alpha: .78),
+                  fontSize: 14,
+                ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onAction,
+              icon: Icon(isSeller ? Icons.add_rounded : Icons.search_rounded),
+              label: Text(actionLabel),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(56),
+                alignment: Alignment.center,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
             ),
-            if (task != tasks.last) const SizedBox(height: 10),
-          ],
+          ),
         ],
       );
 }
 
-class _QuickTaskCard extends StatelessWidget {
-  const _QuickTaskCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.path,
+class _SellerActivity extends StatelessWidget {
+  const _SellerActivity({
+    required this.lots,
+    required this.loading,
+    required this.onPublishedTap,
+    required this.onDraftsTap,
   });
 
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final String path;
+  final List<Lot>? lots;
+  final bool loading;
+  final VoidCallback onPublishedTap;
+  final VoidCallback onDraftsTap;
 
   @override
-  Widget build(BuildContext context) => _RevealIn(
-        child: Material(
-          color: Colors.white.withValues(alpha: .94),
-          borderRadius: BorderRadius.circular(22),
-          child: InkWell(
-            onTap: () => context.go(path),
-            borderRadius: BorderRadius.circular(22),
+  Widget build(BuildContext context) {
+    final published = lots?.where((lot) => lot.status == 'published').length;
+    final drafts = lots?.where((lot) => lot.status == 'draft').length;
+    final recent = List<Lot>.of(lots ?? const <Lot>[])
+      ..sort((a, b) => b.availableFrom.compareTo(a.availableFrom));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Tu actividad',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: AppTheme.ink,
+                  fontWeight: FontWeight.w700,
+                )),
+        const SizedBox(height: 12),
+        Material(
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+            side: const BorderSide(color: AppTheme.outline),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: _MetricAction(
+                  label: 'Publicados',
+                  value: loading ? null : '${published ?? 0}',
+                  onTap: onPublishedTap,
+                  semanticLabel: 'Ver lotes publicados, ${published ?? 0}',
+                ),
+              ),
+              const SizedBox(height: 64, child: VerticalDivider(width: 1)),
+              Expanded(
+                child: _MetricAction(
+                  label: 'Borradores',
+                  value: loading ? null : '${drafts ?? 0}',
+                  onTap: onDraftsTap,
+                  semanticLabel: 'Ver mis borradores, ${drafts ?? 0}',
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (recent.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          Text('Actividad reciente',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: AppTheme.ink,
+                    fontWeight: FontWeight.w700,
+                  )),
+          const SizedBox(height: 8),
+          for (final lot in recent.take(2)) _RecentLotLine(lot: lot),
+        ] else if (!loading && lots != null) ...[
+          const SizedBox(height: 16),
+          Text(
+            'Aún no tienes lotes. Tu actividad aparecerá aquí cuando publiques el primero.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppTheme.ink.withValues(alpha: .76),
+                  fontSize: 14,
+                ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _MetricAction extends StatelessWidget {
+  const _MetricAction({
+    required this.label,
+    required this.value,
+    required this.onTap,
+    required this.semanticLabel,
+  });
+
+  final String label;
+  final String? value;
+  final VoidCallback onTap;
+  final String semanticLabel;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        button: true,
+        label: semanticLabel,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 88),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              child: Row(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: const BoxDecoration(
-                      color: AppTheme.mint,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(icon, color: AppTheme.forest),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(title,
-                            style: Theme.of(context).textTheme.titleMedium),
-                        const SizedBox(height: 2),
-                        Text(subtitle,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(fontSize: 14)),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right, color: AppTheme.mutedText),
+                  Text(value ?? '—',
+                      style:
+                          Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                color: AppTheme.forest,
+                                fontSize: 27,
+                                height: 1.1,
+                              )),
+                  const SizedBox(height: 4),
+                  Text(label,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: AppTheme.ink.withValues(alpha: .78),
+                            fontSize: 14,
+                          )),
                 ],
               ),
             ),
@@ -816,145 +349,112 @@ class _QuickTaskCard extends StatelessWidget {
       );
 }
 
-class _SectionHeading extends StatelessWidget {
-  const _SectionHeading({required this.title});
+class _RecentLotLine extends StatelessWidget {
+  const _RecentLotLine({required this.lot});
 
-  final String title;
+  final Lot lot;
 
   @override
-  Widget build(BuildContext context) => Row(
+  Widget build(BuildContext context) {
+    final statusLabel = switch (lot.status) {
+      'published' => 'Publicado',
+      'draft' => 'Borrador',
+      'reserved' => 'Reservado',
+      'sold_out' => 'Agotado',
+      'cancelled' => 'Cancelado',
+      'expired' => 'Vencido',
+      _ => 'En preparación',
+    };
+    final date = '${lot.availableFrom.day.toString().padLeft(2, '0')}/'
+        '${lot.availableFrom.month.toString().padLeft(2, '0')}';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
         children: [
+          Icon(Icons.circle, size: 9, color: _statusColor(lot.status)),
+          const SizedBox(width: 12),
           Expanded(
-            child: Text(title,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: AppTheme.ink,
-                      fontWeight: FontWeight.w700,
-                    )),
+            child: Text(
+              '$statusLabel · disponible desde $date',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppTheme.ink.withValues(alpha: .82),
+                    fontSize: 14,
+                  ),
+            ),
           ),
         ],
-      );
-}
-
-class _SwayingLeaf extends StatefulWidget {
-  const _SwayingLeaf({required this.color, required this.disabled});
-
-  final Color color;
-  final bool disabled;
-
-  @override
-  State<_SwayingLeaf> createState() => _SwayingLeafState();
-}
-
-class _SwayingLeafState extends State<_SwayingLeaf> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) => MouseRegion(
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        child: AnimatedRotation(
-          turns: widget.disabled || !_hovered ? 0 : .018,
-          duration: widget.disabled
-              ? Duration.zero
-              : const Duration(milliseconds: 240),
-          curve: Curves.fastOutSlowIn,
-          child: SvgPicture.asset(
-            _isotypePath,
-            width: 36,
-            height: 36,
-            colorFilter: ColorFilter.mode(widget.color, BlendMode.srcIn),
-          ),
-        ),
-      );
-}
-
-class _LeafLoadingMark extends StatelessWidget {
-  const _LeafLoadingMark({required this.size});
-
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: reduceMotion ? 1 : 0, end: 1),
-      duration:
-          reduceMotion ? Duration.zero : const Duration(milliseconds: 520),
-      curve: Curves.easeOutCubic,
-      builder: (context, progress, child) => ClipRect(
-        child: Align(
-          alignment: Alignment.centerLeft,
-          widthFactor: progress,
-          child: child,
-        ),
-      ),
-      child: SvgPicture.asset(_isotypePath, width: size, height: size),
-    );
-  }
-}
-
-class _RevealIn extends StatefulWidget {
-  const _RevealIn({required this.child});
-
-  final Widget child;
-
-  @override
-  State<_RevealIn> createState() => _RevealInState();
-}
-
-class _RevealInState extends State<_RevealIn> {
-  bool _visible = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) setState(() => _visible = true);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final disabled = MediaQuery.disableAnimationsOf(context);
-    return AnimatedSlide(
-      offset: _visible || disabled ? Offset.zero : const Offset(0, .035),
-      duration: disabled ? Duration.zero : const Duration(milliseconds: 250),
-      curve: Curves.fastOutSlowIn,
-      child: AnimatedOpacity(
-        opacity: _visible || disabled ? 1 : 0,
-        duration: disabled ? Duration.zero : const Duration(milliseconds: 250),
-        curve: Curves.fastOutSlowIn,
-        child: widget.child,
       ),
     );
   }
 }
 
-class _FieldWashPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = AppTheme.mint.withValues(alpha: .22);
-    final path = Path()
-      ..moveTo(size.width * .72, 0)
-      ..cubicTo(size.width * .9, size.height * .18, size.width * .68,
-          size.height * .35, size.width, size.height * .42)
-      ..lineTo(size.width, 0)
-      ..close();
-    canvas.drawPath(path, paint);
+Color _statusColor(String status) => switch (status) {
+      'published' => AppTheme.primary,
+      'draft' => AppTheme.earth,
+      'reserved' => const Color(0xFF1565C0),
+      'sold_out' || 'cancelled' || 'expired' => AppTheme.mutedText,
+      _ => AppTheme.mutedText,
+    };
 
-    final lowerWash = Paint()..color = AppTheme.earth.withValues(alpha: .025);
-    final lowerPath = Path()
-      ..moveTo(0, size.height * .83)
-      ..cubicTo(size.width * .22, size.height * .72, size.width * .38,
-          size.height * .95, size.width * .6, size.height * .86)
-      ..cubicTo(size.width * .78, size.height * .78, size.width * .9,
-          size.height * .92, size.width, size.height * .82)
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-    canvas.drawPath(lowerPath, lowerWash);
-  }
+class _OfflineNotice extends StatelessWidget {
+  const _OfflineNotice();
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  Widget build(BuildContext context) => Container(
+        constraints: const BoxConstraints(minHeight: 52),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF3CD),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.cloud_off_outlined,
+                color: Color(0xFF704E00), size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Sin conexión. Mostramos la información guardada.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF553B00),
+                      fontSize: 14,
+                    ),
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+class _LoadErrorNotice extends StatelessWidget {
+  const _LoadErrorNotice({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF3CD),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.sync_problem_outlined,
+                color: Color(0xFF704E00), size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'No pudimos actualizar tus lotes.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF553B00),
+                      fontSize: 14,
+                    ),
+              ),
+            ),
+            TextButton(onPressed: onRetry, child: const Text('Reintentar')),
+          ],
+        ),
+      );
 }

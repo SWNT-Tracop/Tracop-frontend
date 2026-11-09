@@ -18,8 +18,7 @@ import 'package:tracop_mobile/app/router.dart' show AuthenticatedShell;
 import 'package:tracop_mobile/features/catalog/domain/entities/lot.dart';
 
 void main() {
-  testWidgets('Home primary action opens product search and returns home',
-      (tester) async {
+  testWidgets('Buyer home has one primary search action', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
@@ -43,25 +42,28 @@ void main() {
       Theme.of(tester.element(find.text('Inicio').first)).brightness,
       Brightness.light,
     );
-    expect(find.text('Explorar lotes'), findsOneWidget);
-    await tester.tap(find.text('Explorar lotes'));
+    expect(find.text('Buscar lotes'), findsOneWidget);
+    expect(find.text('Explorar lotes'), findsNothing);
+    expect(find.text('Conexión disponible'), findsNothing);
+    await tester.tap(find.text('Buscar lotes'));
     await tester.pumpAndSettle();
     expect(find.text('Buscar productos'), findsOneWidget);
 
     await tester.tap(find.text('Volver al inicio'));
     await tester.pumpAndSettle();
-    expect(find.text('Explorar lotes'), findsOneWidget);
+    expect(find.text('Buscar lotes'), findsOneWidget);
   });
 
-  testWidgets('Home uses a two-column summary on desktop', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1440, 1000));
+  testWidgets('New seller sees first-lot action above the fold',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           authProvider.overrideWith((ref) => _HomeAuthNotifier()),
-          homeUserProvider.overrideWith((ref) async => null),
+          homeUserProvider.overrideWith((ref) async => _testUser()),
           homeLotsProvider.overrideWith((ref) async => const []),
           homeConnectivityProvider
               .overrideWith((ref) => Stream<bool>.value(true)),
@@ -71,50 +73,23 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Tu movimiento'), findsOneWidget);
-    expect(find.text('A mano'), findsOneWidget);
-    expect(
-      tester.getTopLeft(find.text('A mano')).dx,
-      greaterThan(tester.getTopLeft(find.text('Tu movimiento')).dx),
-    );
+    final publishAction = find.text('Publicar mi primer lote');
+    expect(publishAction, findsOneWidget);
+    expect(find.text('Buscar lotes'), findsNothing);
+    expect(tester.getRect(publishAction).bottom, lessThan(760));
   });
 
-  testWidgets('Home summary cards have matching size and alignment',
+  testWidgets('Seller home keeps activity in the desktop content',
       (tester) async {
-    await tester.binding.setSurfaceSize(const Size(390, 844));
+    await tester.binding.setSurfaceSize(const Size(1440, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final now = DateTime(2026, 1, 1);
-    final lots = [
-      Lot(
-        id: 'published-lot',
-        productId: 'product-1',
-        quantityMilli: '1000',
-        unit: 'kg',
-        unitPrice: '2500',
-        availableFrom: now,
-        availableUntil: now.add(const Duration(days: 1)),
-        status: 'published',
-        version: 1,
-      ),
-      Lot(
-        id: 'draft-lot',
-        productId: 'product-2',
-        quantityMilli: '1000',
-        unit: 'kg',
-        unitPrice: '2500',
-        availableFrom: now,
-        availableUntil: now.add(const Duration(days: 1)),
-        status: 'draft',
-        version: 1,
-      ),
-    ];
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           authProvider.overrideWith((ref) => _HomeAuthNotifier()),
-          homeUserProvider.overrideWith((ref) async => null),
-          homeLotsProvider.overrideWith((ref) async => lots),
+          homeUserProvider.overrideWith((ref) async => _testUser()),
+          homeLotsProvider.overrideWith((ref) async => const []),
           homeConnectivityProvider
               .overrideWith((ref) => Stream<bool>.value(true)),
         ],
@@ -123,23 +98,39 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    Finder cardFor(String label) => find.ancestor(
-          of: find.text(label),
-          matching: find.byWidgetPredicate(
-            (widget) =>
-                widget is Material &&
-                widget.shape is RoundedRectangleBorder &&
-                widget.color == Colors.white.withValues(alpha: .96),
-          ),
-        );
+    expect(find.text('Tu actividad'), findsOneWidget);
+    expect(find.text('A mano'), findsNothing);
+    expect(find.text('Mi perfil'), findsNothing);
+    expect(find.text('Mis lotes'), findsOneWidget); // Sidebar destination only.
+  });
 
-    final publishedCard = cardFor('Lotes publicados');
-    final draftsCard = cardFor('Borradores');
-    expect(publishedCard, findsOneWidget);
-    expect(draftsCard, findsOneWidget);
-    expect(tester.getSize(publishedCard), tester.getSize(draftsCard));
-    expect(
-        tester.getTopLeft(publishedCard).dy, tester.getTopLeft(draftsCard).dy);
+  testWidgets('Draft metric opens the lots destination', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authProvider.overrideWith((ref) => _HomeAuthNotifier()),
+          homeUserProvider.overrideWith((ref) async => _testUser()),
+          homeLotsProvider.overrideWith((ref) async => [
+                _testLot(id: 'published-lot', status: 'published'),
+                _testLot(id: 'draft-lot', status: 'draft'),
+              ]),
+          homeConnectivityProvider
+              .overrideWith((ref) => Stream<bool>.value(true)),
+        ],
+        child: const TracopApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Publicados'), findsOneWidget);
+    expect(find.text('Borradores'), findsOneWidget);
+    await tester.tap(find.text('Borradores'));
+    await tester.pumpAndSettle();
+    expect(find.text('Mis lotes'), findsWidgets);
+    await tester.tap(find.text('Volver al inicio'));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('Home keeps one retry action when lot loading fails',
@@ -151,7 +142,7 @@ void main() {
       ProviderScope(
         overrides: [
           authProvider.overrideWith((ref) => _HomeAuthNotifier()),
-          homeUserProvider.overrideWith((ref) async => null),
+          homeUserProvider.overrideWith((ref) async => _testUser()),
           homeLotsProvider
               .overrideWith((ref) async => throw Exception('offline')),
           homeConnectivityProvider
@@ -162,7 +153,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('No pudimos actualizar tus lotes'), findsOneWidget);
+    expect(find.text('No pudimos actualizar tus lotes.'), findsOneWidget);
     expect(find.text('Reintentar'), findsOneWidget);
     expect(find.text('No se pudo actualizar'), findsNothing);
   });
@@ -294,6 +285,30 @@ void main() {
     expect(find.text('Karo Test'), findsNothing);
     expect(tester.widget<AppBar>(find.byType(AppBar)).toolbarHeight, 61);
   });
+}
+
+User _testUser({String role = 'producer'}) => User(
+      id: 'home-test-user',
+      role: role,
+      fullName: 'Karo Test',
+      phone: '+573001234567',
+      status: 'active',
+      locale: 'es-CO',
+    );
+
+Lot _testLot({required String id, required String status}) {
+  final now = DateTime(2026, 1, 1);
+  return Lot(
+    id: id,
+    productId: 'product-1',
+    quantityMilli: '1000',
+    unit: 'kg',
+    unitPrice: '2500',
+    availableFrom: now,
+    availableUntil: now.add(const Duration(days: 1)),
+    status: status,
+    version: 1,
+  );
 }
 
 class _HomeAuthNotifier extends AuthNotifier {
