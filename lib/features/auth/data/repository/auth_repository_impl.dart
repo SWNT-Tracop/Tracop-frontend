@@ -148,9 +148,50 @@ class AuthRepositoryImpl implements AuthRepository {
       UpsertProviderProfileRequest request) async {
     try {
       await remote.upsertProviderProfile(request.toJson());
+      final user = (await getStoredUser()).map(
+        ok: (value) => value.value,
+        err: (_) => null,
+      );
+      if (user != null) {
+        await db.into(db.providerProfiles).insertOnConflictUpdate(
+              ProviderProfilesCompanion.insert(
+                userId: user.id,
+                displayName: request.displayName,
+                municipality: request.municipality,
+                department: request.department,
+                lat: request.lat,
+                lng: request.lng,
+                description: request.description,
+                updatedAt: DateTime.now(),
+              ),
+            );
+      }
       return const Ok(null);
     } on DomainFailure catch (e) {
       return Err(e);
+    } on DioException catch (e) {
+      return Err(_networkFailure(e));
+    } catch (e) {
+      return Err(DomainFailure(
+          statusCode: 500, code: 'unknown', message: e.toString()));
+    }
+  }
+
+  @override
+  Future<Result<UpsertProviderProfileRequest?, DomainFailure>>
+      getStoredProviderProfile() async {
+    try {
+      final row =
+          await (db.select(db.providerProfiles)..limit(1)).getSingleOrNull();
+      if (row == null) return const Ok(null);
+      return Ok(UpsertProviderProfileRequest(
+        displayName: row.displayName,
+        municipality: row.municipality,
+        department: row.department,
+        lat: row.lat,
+        lng: row.lng,
+        description: row.description,
+      ));
     } catch (e) {
       return Err(DomainFailure(
           statusCode: 500, code: 'unknown', message: e.toString()));

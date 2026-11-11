@@ -29,3 +29,25 @@ class Product {
         'attributes': attributes,
       };
 }
+
+class CreateProductRequest {
+  final String id;
+  final String categoryId;
+  final String name;
+  final String unit;
+
+  const CreateProductRequest({
+    required this.id,
+    required this.categoryId,
+    required this.name,
+    required this.unit,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'categoryId': categoryId,
+        'name': name,
+        'unit': unit,
+        'attributes': <String, dynamic>{},
+      };
+}

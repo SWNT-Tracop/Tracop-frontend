@@ -97,7 +97,11 @@ class Lot {
   final int version;
   final ProviderSummary? provider;
   final double? distanceKm;
+  final double? locationLat;
+  final double? locationLng;
   final bool isMine;
+  final DateTime? cachedAt;
+  final bool isFromCache;
 
   const Lot({
     required this.id,
@@ -113,7 +117,11 @@ class Lot {
     required this.version,
     this.provider,
     this.distanceKm,
+    this.locationLat,
+    this.locationLng,
     this.isMine = false,
+    this.cachedAt,
+    this.isFromCache = false,
   });
 
   factory Lot.fromJson(Map<String, dynamic> json) => Lot(
@@ -134,7 +142,15 @@ class Lot {
         distanceKm: json['distanceKm'] is num
             ? (json['distanceKm'] as num).toDouble()
             : null,
+        locationLat: json['locationLat'] is num
+            ? (json['locationLat'] as num).toDouble()
+            : null,
+        locationLng: json['locationLng'] is num
+            ? (json['locationLng'] as num).toDouble()
+            : null,
         isMine: json['isMine'] as bool? ?? false,
+        cachedAt: DateTime.tryParse(json['_cachedAt'] as String? ?? ''),
+        isFromCache: json['_fromCache'] as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -151,7 +167,10 @@ class Lot {
         'version': version,
         'provider': provider?.toJson(),
         'distanceKm': distanceKm,
+        'locationLat': locationLat,
+        'locationLng': locationLng,
         'isMine': isMine,
+        if (cachedAt != null) '_cachedAt': cachedAt!.toIso8601String(),
       };
 
   Map<String, dynamic> toJsonWithoutProvider() => {
@@ -171,14 +190,23 @@ class Lot {
 class LotPage {
   final List<Lot> items;
   final String? nextCursor;
+  final DateTime? cachedAt;
+  final bool isFromCache;
 
-  const LotPage({required this.items, this.nextCursor});
+  const LotPage({
+    required this.items,
+    this.nextCursor,
+    this.cachedAt,
+    this.isFromCache = false,
+  });
 
   factory LotPage.fromJson(Map<String, dynamic> json) => LotPage(
         items: (json['items'] as List)
             .map((e) => Lot.fromJson(e as Map<String, dynamic>))
             .toList(),
         nextCursor: json['nextCursor'] as String?,
+        cachedAt: DateTime.tryParse(json['_cachedAt'] as String? ?? ''),
+        isFromCache: json['_fromCache'] as bool? ?? false,
       );
 }
 
@@ -223,6 +251,7 @@ class CreateLotRequest {
 
 class UpdateLotRequest {
   final int version;
+  final String? productId;
   final String? quantityMilli;
   final String? unit;
   final int? unitPrice;
@@ -234,6 +263,7 @@ class UpdateLotRequest {
 
   const UpdateLotRequest({
     required this.version,
+    this.productId,
     this.quantityMilli,
     this.unit,
     this.unitPrice,
@@ -246,10 +276,11 @@ class UpdateLotRequest {
 
   Map<String, dynamic> toJson() => {
         'version': version,
+        if (productId != null) 'productId': productId,
         if (quantityMilli != null) 'quantityMilli': quantityMilli,
         if (unit != null) 'unit': unit,
         if (unitPrice != null) 'unitPrice': unitPrice,
-        if (qualityGrade != null) 'qualityGrade': qualityGrade,
+        'qualityGrade': qualityGrade,
         if (availableFrom != null)
           'availableFrom': availableFrom!.toIso8601String(),
         if (availableUntil != null)

@@ -183,6 +183,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
           ]),
         ),
+        if (user.role == 'producer' || user.role == 'supplier') ...[
+          const SizedBox(height: 16),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.storefront_outlined),
+              title: const Text('Perfil de proveedor'),
+              subtitle: const Text(
+                  'Completa o actualiza tu operación para publicar lotes.'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: connected == false || _saving
+                  ? null
+                  : () => context.push('/perfil/proveedor'),
+            ),
+          ),
+        ],
         const SizedBox(height: 20),
         OutlinedButton.icon(
           onPressed: _saving ? null : _logout,

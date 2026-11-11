@@ -4,6 +4,7 @@ abstract class CatalogRemoteDataSource {
   Future<List<Map<String, dynamic>>> getCategories();
   Future<List<Map<String, dynamic>>> getProducts(
       {String? categoryId, String? q});
+  Future<Map<String, dynamic>> createProduct(Map<String, dynamic> body);
   Future<Map<String, dynamic>> searchLots(Map<String, dynamic> query);
   Future<Map<String, dynamic>> getLot(String id);
   Future<List<Map<String, dynamic>>> getMyLots();
@@ -11,6 +12,7 @@ abstract class CatalogRemoteDataSource {
   Future<Map<String, dynamic>> updateLot(String id, Map<String, dynamic> body);
   Future<Map<String, dynamic>> publishLot(String id, Map<String, dynamic> body);
   Future<Map<String, dynamic>> cancelLot(String id, Map<String, dynamic> body);
+  Future<void> deleteLot(String id, Map<String, dynamic> body);
 }
 
 class CatalogRemoteDataSourceImpl implements CatalogRemoteDataSource {
@@ -33,6 +35,13 @@ class CatalogRemoteDataSourceImpl implements CatalogRemoteDataSource {
     final response = await dioClient.instance
         .get('/catalog/products', queryParameters: query);
     return (response.data as List).cast<Map<String, dynamic>>();
+  }
+
+  @override
+  Future<Map<String, dynamic>> createProduct(Map<String, dynamic> body) async {
+    final response =
+        await dioClient.instance.post('/catalog/products', data: body);
+    return response.data as Map<String, dynamic>;
   }
 
   @override
@@ -81,5 +90,10 @@ class CatalogRemoteDataSourceImpl implements CatalogRemoteDataSource {
     final response =
         await dioClient.instance.post('/lots/$id/cancel', data: body);
     return response.data as Map<String, dynamic>;
+  }
+
+  @override
+  Future<void> deleteLot(String id, Map<String, dynamic> body) async {
+    await dioClient.instance.delete('/lots/$id', data: body);
   }
 }

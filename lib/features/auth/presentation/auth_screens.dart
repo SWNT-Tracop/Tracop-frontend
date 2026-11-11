@@ -198,8 +198,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             consentVersion: AppConfig.privacyPolicyVersion));
     if (!mounted) return;
     result.map(
-        ok: (_) =>
-            context.push('/otp-verify', extra: _normalizePhone(_phone.text)),
+        ok: (_) => context.push('/otp-verify?providerSetup=true',
+            extra: _normalizePhone(_phone.text)),
         err: (err) => setState(() => _error = _errorText(err.error.code)));
     setState(() => _busy = false);
   }
@@ -277,8 +277,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 }
 
 class OtpVerifyScreen extends ConsumerStatefulWidget {
-  const OtpVerifyScreen({required this.phone, super.key});
+  const OtpVerifyScreen({
+    required this.phone,
+    this.providerSetup = false,
+    super.key,
+  });
   final String phone;
+  final bool providerSetup;
   @override
   ConsumerState<OtpVerifyScreen> createState() => _OtpVerifyScreenState();
 }
@@ -309,7 +314,11 @@ class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
         _code.clear();
       });
     } else {
-      context.go('/');
+      final role = state.valueOrNull?.user.role;
+      context.go(
+          widget.providerSetup && (role == 'producer' || role == 'supplier')
+              ? '/perfil/proveedor?onboarding=true'
+              : '/');
     }
     setState(() => _busy = false);
   }
@@ -470,6 +479,8 @@ String _errorText(String code) => switch (code) {
         'Demasiados intentos. Solicita un código nuevo.',
       'rate_limited' => 'Demasiadas solicitudes. Intenta nuevamente más tarde.',
       'invalid_session' => 'Sesión expirada. Inicia sesión nuevamente.',
+      'access_denied' =>
+        'Este dispositivo está vinculado a otra cuenta. Usa otro dispositivo o inicia sesión con esa cuenta.',
       'network_error' =>
         'No hay conexión con el servicio. Intenta cuando tengas señal.',
       _ => 'No pudimos completar la solicitud. Intenta de nuevo.'
