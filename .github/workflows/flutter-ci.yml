@@ -26,8 +26,13 @@ jobs:
       - name: Scan Dart and Flutter code
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-          SNYK_CFG_ORG: ${{ secrets.ORG_ID }}
-        run: snyk code test --severity-threshold=high
+          SNYK_ORG: ${{ secrets.ORG_ID }}
+        run: |
+          if [ -z "$SNYK_ORG" ]; then
+            echo "Error: El secreto ORG_ID está vacío o no está configurado en GitHub."
+            exit 1
+          fi
+          snyk code test --org="$SNYK_ORG" --severity-threshold=high
 
   flutter-quality:
     name: Flutter analyze and test
