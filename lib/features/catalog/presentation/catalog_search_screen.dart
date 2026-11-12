@@ -526,6 +526,26 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
             padding: const EdgeInsets.all(16),
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              if (lot.photos.isNotEmpty) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: SizedBox(
+                    height: 148,
+                    width: double.infinity,
+                    child: Image.network(
+                      lot.photos.first.url,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: AppTheme.mint.withValues(alpha: 0.4),
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.image_not_supported_outlined,
+                            color: AppTheme.forest),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Expanded(
                     child: Text(productName,

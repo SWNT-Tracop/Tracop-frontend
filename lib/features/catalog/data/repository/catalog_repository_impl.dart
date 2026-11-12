@@ -213,8 +213,13 @@ class CatalogRepositoryImpl implements CatalogRepository {
       final json = await remote.getLot(id);
       final lot = Lot.fromJson(json);
       final cachedAt = DateTime.now().toUtc();
-      await _writeCache('catalog_lot_$id',
-          jsonEncode({...json, '_cachedAt': cachedAt.toIso8601String()}));
+      final cacheJson = Map<String, dynamic>.from(json)..remove('photos');
+      await _writeCache(
+          'catalog_lot_$id',
+          jsonEncode({
+            ...cacheJson,
+            '_cachedAt': cachedAt.toIso8601String(),
+          }));
       await _cacheLots([lot], cachedAt);
       return Ok(
           Lot.fromJson({...json, '_cachedAt': cachedAt.toIso8601String()}));
@@ -311,8 +316,12 @@ class CatalogRepositoryImpl implements CatalogRepository {
   Future<Lot?> _readLotCache(String id) async {
     final raw = await _readCache('catalog_lot_$id');
     if (raw == null) return null;
+    final cachedJson =
+        Map<String, dynamic>.from(jsonDecode(raw) as Map<String, dynamic>)
+          ..remove('photos');
+    await _writeCache('catalog_lot_$id', jsonEncode(cachedJson));
     return Lot.fromJson({
-      ...(jsonDecode(raw) as Map<String, dynamic>),
+      ...cachedJson,
       '_fromCache': true,
     });
   }
@@ -422,6 +431,105 @@ class CatalogRepositoryImpl implements CatalogRepository {
       return Err(DomainFailure(
           statusCode: 500, code: 'unknown', message: e.toString()));
     }
+  }
+
+  @override
+  Future<Result<List<LotPhoto>, DomainFailure>> uploadLotPhoto({
+    required String lotId,
+    required String photoId,
+    required String filename,
+    required Uint8List bytes,
+  }) async {
+    try {
+      final preparation = await remote.prepareLotPhotoUpload(lotId, photoId);
+      var state = preparation['state'];
+      if (state == 'pending') {
+        final policy = preparation['uploadPolicy'] as Map<String, dynamic>?;
+        if (policy == null) {
+          throw const DomainFailure(
+            statusCode: 502,
+            code: 'photo_policy_missing',
+            message: 'No se recibió la autorización para cargar la foto.',
+          );
+        }
+        await remote.uploadPhotoObject(
+          url: policy['url'] as String,
+          fields: Map<String, String>.from(policy['fields'] as Map),
+          filename: filename,
+          bytes: bytes,
+        );
+        state = (await remote.confirmLotPhoto(lotId, photoId))['state'];
+      }
+
+      for (var attempt = 0; state == 'processing' && attempt < 6; attempt++) {
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+        state = (await remote.confirmLotPhoto(lotId, photoId))['state'];
+      }
+      if (state != 'ready') {
+        throw const DomainFailure(
+          statusCode: 503,
+          code: 'photo_processing',
+          message: 'La foto sigue procesándose. Intenta actualizar el lote.',
+        );
+      }
+      return Ok(await _fetchLotPhotos(lotId));
+    } on DomainFailure catch (e) {
+      return Err(e);
+    } catch (e) {
+      return const Err(DomainFailure(
+        statusCode: 500,
+        code: 'photo_upload_failed',
+        message: 'No se pudo cargar la foto al almacenamiento.',
+      ));
+    }
+  }
+
+  @override
+  Future<Result<List<LotPhoto>, DomainFailure>> deleteLotPhoto(
+      String lotId, String photoId) async {
+    try {
+      await remote.deleteLotPhoto(lotId, photoId);
+      return Ok(await _fetchLotPhotos(lotId));
+    } on DomainFailure catch (e) {
+      return Err(e);
+    } catch (e) {
+      return Err(DomainFailure(
+        statusCode: 500,
+        code: 'photo_delete_failed',
+        message: e.toString(),
+      ));
+    }
+  }
+
+  @override
+  Future<Result<List<LotPhoto>, DomainFailure>> reorderLotPhotos(
+      String lotId, List<String> photoIds) async {
+    try {
+      await remote.reorderLotPhotos(lotId, photoIds);
+      return Ok(await _fetchLotPhotos(lotId));
+    } on DomainFailure catch (e) {
+      return Err(e);
+    } catch (e) {
+      return Err(DomainFailure(
+        statusCode: 500,
+        code: 'photo_order_failed',
+        message: e.toString(),
+      ));
+    }
+  }
+
+  Future<List<LotPhoto>> _fetchLotPhotos(String lotId) async {
+    final json = await remote.getLot(lotId);
+    final lot = Lot.fromJson(json);
+    final cachedAt = DateTime.now().toUtc();
+    final cacheJson = Map<String, dynamic>.from(json)..remove('photos');
+    await _writeCache(
+        'catalog_lot_$lotId',
+        jsonEncode({
+          ...cacheJson,
+          '_cachedAt': cachedAt.toIso8601String(),
+        }));
+    return lot.photos;
   }
 
   Future<void> _rememberLot(Lot lot) async {

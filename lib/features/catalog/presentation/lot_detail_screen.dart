@@ -94,6 +94,24 @@ class LotDetailScreen extends ConsumerWidget {
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                   children: [
+                    if (item.photos.isNotEmpty) ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(22),
+                        child: SizedBox(
+                          height: 240,
+                          child: PageView.builder(
+                            itemCount: item.photos.length,
+                            itemBuilder: (context, index) => Image.network(
+                              item.photos[index].url,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  const _LotPhotoPlaceholder(),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
                     if (ref.watch(homeConnectivityProvider).valueOrNull ==
                             false ||
                         item.isFromCache)
@@ -264,6 +282,18 @@ class _CachedNotice extends StatelessWidget {
       ),
     );
   }
+}
+
+class _LotPhotoPlaceholder extends StatelessWidget {
+  const _LotPhotoPlaceholder();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        color: AppTheme.mint.withValues(alpha: 0.4),
+        alignment: Alignment.center,
+        child: const Icon(Icons.image_not_supported_outlined,
+            size: 36, color: AppTheme.forest),
+      );
 }
 
 class _DetailLoading extends StatelessWidget {

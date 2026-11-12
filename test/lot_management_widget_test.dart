@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -47,6 +49,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Nuevo lote'), findsOneWidget);
+    expect(find.text('Fotos del lote'), findsOneWidget);
+    expect(find.text('0 de 5 · JPG, PNG o WebP · máximo 5 MB por foto'),
+        findsOneWidget);
     await _scrollTo(tester, find.text('Guardar borrador').last);
     await tester.tap(find.text('Guardar borrador').last);
     await tester.pumpAndSettle();
@@ -325,6 +330,25 @@ class _LotRepository implements CatalogRepository {
     deleteCalls++;
     return const Ok(null);
   }
+
+  @override
+  Future<Result<List<LotPhoto>, DomainFailure>> uploadLotPhoto({
+    required String lotId,
+    required String photoId,
+    required String filename,
+    required Uint8List bytes,
+  }) async =>
+      const Ok([]);
+
+  @override
+  Future<Result<List<LotPhoto>, DomainFailure>> deleteLotPhoto(
+          String lotId, String photoId) async =>
+      const Ok([]);
+
+  @override
+  Future<Result<List<LotPhoto>, DomainFailure>> reorderLotPhotos(
+          String lotId, List<String> photoIds) async =>
+      const Ok([]);
 }
 
 class _ProducerAuthNotifier extends AuthNotifier {

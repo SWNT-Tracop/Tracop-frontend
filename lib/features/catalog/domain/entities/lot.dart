@@ -83,6 +83,20 @@ class ProviderSummary {
       };
 }
 
+class LotPhoto {
+  final String id;
+  final int position;
+  final String url;
+
+  const LotPhoto({required this.id, required this.position, required this.url});
+
+  factory LotPhoto.fromJson(Map<String, dynamic> json) => LotPhoto(
+        id: json['id'] as String,
+        position: json['position'] as int,
+        url: json['url'] as String,
+      );
+}
+
 class Lot {
   final String id;
   final String? providerId;
@@ -102,6 +116,7 @@ class Lot {
   final bool isMine;
   final DateTime? cachedAt;
   final bool isFromCache;
+  final List<LotPhoto> photos;
 
   const Lot({
     required this.id,
@@ -122,6 +137,7 @@ class Lot {
     this.isMine = false,
     this.cachedAt,
     this.isFromCache = false,
+    this.photos = const [],
   });
 
   factory Lot.fromJson(Map<String, dynamic> json) => Lot(
@@ -151,6 +167,10 @@ class Lot {
         isMine: json['isMine'] as bool? ?? false,
         cachedAt: DateTime.tryParse(json['_cachedAt'] as String? ?? ''),
         isFromCache: json['_fromCache'] as bool? ?? false,
+        photos: (json['photos'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(LotPhoto.fromJson)
+            .toList(growable: false),
       );
 
   Map<String, dynamic> toJson() => {
@@ -170,6 +190,8 @@ class Lot {
         'locationLat': locationLat,
         'locationLng': locationLng,
         'isMine': isMine,
+        // Signed image URLs are short-lived credentials; do not persist them
+        // in the local lot cache or sync payload.
         if (cachedAt != null) '_cachedAt': cachedAt!.toIso8601String(),
       };
 

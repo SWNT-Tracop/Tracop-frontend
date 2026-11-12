@@ -33,6 +33,10 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>TRACOP se conecta a un servidor de desarrollo en la red local durante las pruebas.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>TRACOP necesita acceso a tus fotos para agregarlas a un lote.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>TRACOP usa la cámara para tomar fotos de los productos de un lote.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

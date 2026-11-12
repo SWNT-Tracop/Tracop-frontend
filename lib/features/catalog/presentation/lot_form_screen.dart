@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
@@ -42,13 +45,22 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
   String? _productId;
   String? _unit;
   Product? _createdProduct;
+  String? _draftLotId;
   DateTime? _availableFrom;
   DateTime? _availableUntil;
   int? _existingVersion;
   bool _hydrated = false;
   bool _submitting = false;
+  bool _photoBusy = false;
   String? _formError;
+  String? _photoError;
+  List<LotPhoto> _photos = [];
+  final List<_PendingLotPhoto> _pendingPhotos = [];
+  final _imagePicker = ImagePicker();
   Map<String, String> _fieldErrors = {};
+
+  bool get isEditing => widget.isEditing || _draftLotId != null;
+  String? get _activeLotId => widget.lotId ?? _draftLotId;
 
   @override
   void initState() {
@@ -80,6 +92,7 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
     _availableUntil = dateOnly(lot.availableUntil.toLocal());
     _lat.text = lot.locationLat?.toString() ?? '';
     _lng.text = lot.locationLng?.toString() ?? '';
+    _photos = lot.photos;
   }
 
   Future<void> _pickDate({required bool from}) async {
@@ -135,7 +148,7 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
       } else {
         errors['product'] = 'Elige el producto que vas a ofrecer.';
       }
-    } else if (currentProduct == null && !widget.isEditing) {
+    } else if (currentProduct == null && !isEditing) {
       errors['product'] = 'Elige un producto válido.';
     }
     if (parseQuantityMilli(_quantity.text) == null) {
@@ -169,6 +182,7 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
 
   Future<void> _save({required bool publish}) async {
     FocusScope.of(context).unfocus();
+    final wasEditing = isEditing;
     final offline = ref.read(homeConnectivityProvider).valueOrNull == false;
     if (offline) {
       setState(() {
@@ -218,9 +232,9 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
 
     final repo = ref.read(catalogRepositoryProvider);
     final Result<Lot, DomainFailure> result;
-    if (widget.isEditing) {
+    if (wasEditing) {
       result = await repo.updateLot(
-        widget.lotId!,
+        _activeLotId!,
         UpdateLotRequest(
           version: _existingVersion!,
           productId: _productId,
@@ -266,6 +280,38 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
         return;
     }
 
+    if (!wasEditing && _draftLotId == null) {
+      _draftLotId = saved.id;
+      _existingVersion = saved.version;
+    }
+
+    for (final pending in List<_PendingLotPhoto>.from(_pendingPhotos)) {
+      final photoResult = await repo.uploadLotPhoto(
+        lotId: saved.id,
+        photoId: pending.id,
+        filename: pending.file.name,
+        bytes: pending.bytes,
+      );
+      if (photoResult case Ok(:final value)) {
+        if (!mounted) return;
+        setState(() {
+          _photos = value;
+          _pendingPhotos.remove(pending);
+          _photoError = null;
+        });
+      } else if (photoResult case Err(:final error)) {
+        if (!mounted) return;
+        setState(() {
+          _submitting = false;
+          _photoError = _photoErrorText(error);
+          _draftLotId = saved!.id;
+          _existingVersion = saved.version;
+        });
+        _invalidateLotViews(saved.id);
+        return;
+      }
+    }
+
     DomainFailure? publishFailure;
     if (publish) {
       final outcome = await repo.publishLot(saved.id, saved.version);
@@ -278,15 +324,13 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
     }
 
     if (!mounted) return;
-    ref.invalidate(myLotsProvider);
-    ref.invalidate(homeLotsProvider);
-    ref.invalidate(lotByIdProvider(saved.id));
-    ref.invalidate(lotDetailProvider);
+    setState(() => _photoError = null);
+    _invalidateLotViews(saved.id);
     final message = publishFailure != null
         ? 'Guardado como borrador. No se pudo publicar: ${lotErrorText(publishFailure)}'
         : publish
             ? 'Lote publicado.'
-            : widget.isEditing
+            : wasEditing
                 ? 'Cambios guardados.'
                 : 'Borrador guardado.';
     ScaffoldMessenger.of(context)
@@ -329,6 +373,293 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
       if (_fieldErrors.isEmpty) _formError = null;
     });
   }
+
+  void _invalidateLotViews(String lotId) {
+    ref.invalidate(lotByIdProvider(lotId));
+    ref.invalidate(lotDetailProvider(lotId));
+    ref.invalidate(myLotsProvider);
+    ref.invalidate(homeLotsProvider);
+  }
+
+  Future<void> _choosePhotoSource() async {
+    if (_submitting || _photoBusy) return;
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      useSafeArea: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Elegir de la galería'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+            if (kIsWeb ||
+                defaultTargetPlatform == TargetPlatform.android ||
+                defaultTargetPlatform == TargetPlatform.iOS)
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('Tomar una foto'),
+                onTap: () => Navigator.pop(context, ImageSource.camera),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (source != null && mounted) await _pickPhotos(source);
+  }
+
+  Future<void> _pickPhotos(ImageSource source) async {
+    const maxPhotoCount = 5;
+    const maxPhotoBytes = 5 * 1024 * 1024;
+    final remaining = maxPhotoCount - _photos.length - _pendingPhotos.length;
+    if (remaining <= 0) return;
+
+    try {
+      final List<XFile> files;
+      if (source == ImageSource.gallery) {
+        files = await _imagePicker.pickMultiImage(
+          limit: remaining,
+          maxWidth: 2560,
+          maxHeight: 2560,
+          imageQuality: 85,
+        );
+      } else {
+        final file = await _imagePicker.pickImage(
+          source: ImageSource.camera,
+          maxWidth: 2560,
+          maxHeight: 2560,
+          imageQuality: 85,
+        );
+        files = file == null ? const [] : [file];
+      }
+      if (files.isEmpty || !mounted) return;
+
+      final selected = <_PendingLotPhoto>[];
+      String? selectionError;
+      for (final file in files.take(remaining)) {
+        if (await file.length() > maxPhotoBytes) {
+          selectionError =
+              'Cada foto debe pesar máximo 5 MB. Las demás sí se agregaron.';
+          continue;
+        }
+        final bytes = await file.readAsBytes();
+        selected.add(_PendingLotPhoto(
+          id: const Uuid().v7(),
+          file: file,
+          bytes: bytes,
+        ));
+      }
+      if (!mounted) return;
+      setState(() {
+        _pendingPhotos.addAll(selected);
+        _photoError = selectionError;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _photoError =
+          'No pudimos abrir la cámara o la galería. Revisa los permisos e intenta de nuevo.');
+    }
+  }
+
+  Future<void> _removeSavedPhoto(LotPhoto photo) async {
+    final lotId = _activeLotId;
+    if (lotId == null ||
+        _photoBusy ||
+        _submitting ||
+        ref.read(homeConnectivityProvider).valueOrNull == false) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Quitar foto'),
+        content: const Text('La foto dejará de aparecer en este lote.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Quitar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _photoBusy = true;
+      _photoError = null;
+    });
+    final result = await ref
+        .read(catalogRepositoryProvider)
+        .deleteLotPhoto(lotId, photo.id);
+    if (!mounted) return;
+    switch (result) {
+      case Ok(:final value):
+        setState(() {
+          _photos = value;
+          _photoBusy = false;
+        });
+        _invalidateLotViews(lotId);
+      case Err(:final error):
+        setState(() {
+          _photoBusy = false;
+          _photoError = _photoErrorText(error);
+        });
+    }
+  }
+
+  Future<void> _moveSavedPhoto(int index, int offset) async {
+    final lotId = _activeLotId;
+    final destination = index + offset;
+    if (lotId == null ||
+        _photoBusy ||
+        _submitting ||
+        ref.read(homeConnectivityProvider).valueOrNull == false ||
+        destination < 0 ||
+        destination >= _photos.length) {
+      return;
+    }
+    final ordered = List<LotPhoto>.from(_photos);
+    final item = ordered.removeAt(index);
+    ordered.insert(destination, item);
+    setState(() {
+      _photoBusy = true;
+      _photos = ordered;
+      _photoError = null;
+    });
+    final result = await ref.read(catalogRepositoryProvider).reorderLotPhotos(
+          lotId,
+          ordered.map((photo) => photo.id).toList(growable: false),
+        );
+    if (!mounted) return;
+    switch (result) {
+      case Ok(:final value):
+        setState(() {
+          _photos = value;
+          _photoBusy = false;
+        });
+        _invalidateLotViews(lotId);
+      case Err(:final error):
+        setState(() {
+          _photos = List<LotPhoto>.from(_photos)
+            ..remove(item)
+            ..insert(index, item);
+          _photoBusy = false;
+          _photoError = _photoErrorText(error);
+        });
+    }
+  }
+
+  Widget _photosSection({required bool offline}) {
+    final count = _photos.length + _pendingPhotos.length;
+    final canAdd = !offline && !_submitting && !_photoBusy && count < 5;
+    return _SectionCard(
+      title: 'Fotos del lote',
+      subtitle:
+          'Agrega fotos desde la galería o la cámara; se cargarán al guardar el lote.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_photos.isEmpty && _pendingPhotos.isEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              decoration: BoxDecoration(
+                color: AppTheme.mint.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppTheme.outline),
+              ),
+              child: const Column(
+                children: [
+                  Icon(Icons.add_photo_alternate_outlined,
+                      size: 30, color: AppTheme.forest),
+                  SizedBox(height: 8),
+                  Text('Aún no agregas fotos'),
+                ],
+              ),
+            ),
+          if (_photos.isNotEmpty || _pendingPhotos.isNotEmpty) ...[
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (var index = 0; index < _photos.length; index++)
+                  _savedPhotoTile(_photos[index], index, offline: offline),
+                for (final pending in _pendingPhotos)
+                  _pendingPhotoTile(pending),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
+          OutlinedButton.icon(
+            onPressed: canAdd ? _choosePhotoSource : null,
+            icon: const Icon(Icons.add_a_photo_outlined),
+            label: Text(
+                count >= 5 ? 'Llegaste al máximo de fotos' : 'Agregar fotos'),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '$count de 5 · JPG, PNG o WebP · máximo 5 MB por foto',
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: AppTheme.mutedText),
+          ),
+          if (offline) ...[
+            const SizedBox(height: 8),
+            const Text('Conéctate para cargar y guardar las fotos.'),
+          ],
+          if (_photoError != null) ...[
+            const SizedBox(height: 10),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                _photoError!,
+                style: const TextStyle(color: Color(0xFFB3261E)),
+              ),
+            ),
+          ],
+          if (_photoBusy) ...[
+            const SizedBox(height: 12),
+            const LinearProgressIndicator(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _savedPhotoTile(LotPhoto photo, int index, {required bool offline}) =>
+      _PhotoTile(
+        key: ValueKey('lot-photo-${photo.id}'),
+        image: Image.network(
+          photo.url,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const _PhotoPlaceholder(),
+        ),
+        label: index == 0 ? 'Portada' : 'Foto ${index + 1}',
+        onRemove: offline || _photoBusy || _submitting
+            ? null
+            : () => _removeSavedPhoto(photo),
+        onMoveBack: offline || index == 0 || _photoBusy || _submitting
+            ? null
+            : () => _moveSavedPhoto(index, -1),
+        onMoveForward:
+            offline || index == _photos.length - 1 || _photoBusy || _submitting
+                ? null
+                : () => _moveSavedPhoto(index, 1),
+      );
+
+  Widget _pendingPhotoTile(_PendingLotPhoto photo) => _PhotoTile(
+        key: ValueKey('pending-lot-photo-${photo.id}'),
+        image: Image.memory(photo.bytes, fit: BoxFit.cover),
+        label: 'Pendiente de guardar',
+        onRemove: _submitting || _photoBusy
+            ? null
+            : () => setState(() => _pendingPhotos.remove(photo)),
+      );
 
   Future<void> _createProduct() async {
     final created = await showModalBottomSheet<Product>(
@@ -384,7 +715,7 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
       );
     }
 
-    if (widget.isEditing && !_hydrated) {
+    if (widget.lotId != null && !_hydrated) {
       if (existing!.hasError) {
         return _FormScaffold(
           title: 'Editar lote',
@@ -404,7 +735,7 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
       );
     }
 
-    if (widget.isEditing && existing!.valueOrNull?.status != 'draft') {
+    if (widget.lotId != null && existing!.valueOrNull?.status != 'draft') {
       return _FormScaffold(
         title: 'Editar lote',
         onBack: _back,
@@ -416,9 +747,9 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
     final estimatedSubtotal = _estimatedSubtotal();
 
     return _FormScaffold(
-      title: widget.isEditing ? 'Editar lote' : 'Nuevo lote',
+      title: isEditing ? 'Editar lote' : 'Nuevo lote',
       onBack: _back,
-      subtitle: widget.isEditing
+      subtitle: isEditing
           ? 'Ajusta los datos del borrador antes de publicarlo.'
           : 'Completa los datos de tu oferta. Puedes guardarla como borrador.',
       child: Form(
@@ -460,7 +791,7 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
                 products: products,
                 productId: _productId,
                 enabled: !_submitting,
-                isEditing: widget.isEditing,
+                isEditing: isEditing,
                 errorMessage: _fieldErrors['product'],
                 addedProduct: _createdProduct,
                 canCreateProduct: isSeller && !_submitting && !offline,
@@ -479,6 +810,8 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
                 onRetry: () => ref.invalidate(catalogProductsProvider),
               ),
             ),
+            const SizedBox(height: 16),
+            _photosSection(offline: offline),
             const SizedBox(height: 16),
             _SectionCard(
               title: 'Cantidad y precio',
@@ -659,7 +992,7 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
             const SizedBox(height: 24),
             _FormActions(
               submitting: _submitting,
-              isEditing: widget.isEditing,
+              isEditing: isEditing,
               onCancel: _submitting ? null : _back,
               onSaveDraft: _submitting ? null : () => _save(publish: false),
               onSaveAndPublish: _submitting ? null : () => _save(publish: true),
@@ -820,6 +1153,113 @@ class _SectionCard extends StatelessWidget {
         ),
       );
 }
+
+class _PendingLotPhoto {
+  const _PendingLotPhoto({
+    required this.id,
+    required this.file,
+    required this.bytes,
+  });
+
+  final String id;
+  final XFile file;
+  final Uint8List bytes;
+}
+
+class _PhotoTile extends StatelessWidget {
+  const _PhotoTile({
+    required this.image,
+    required this.label,
+    required this.onRemove,
+    this.onMoveBack,
+    this.onMoveForward,
+    super.key,
+  });
+
+  final Widget image;
+  final String label;
+  final VoidCallback? onRemove;
+  final VoidCallback? onMoveBack;
+  final VoidCallback? onMoveForward;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 168,
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.outline),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: SizedBox(height: 88, child: image),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (onMoveBack != null || onMoveForward != null) ...[
+                  IconButton(
+                    tooltip: 'Mover antes',
+                    onPressed: onMoveBack,
+                    icon: const Icon(Icons.chevron_left_rounded, size: 20),
+                  ),
+                  IconButton(
+                    tooltip: 'Mover después',
+                    onPressed: onMoveForward,
+                    icon: const Icon(Icons.chevron_right_rounded, size: 20),
+                  ),
+                ],
+                IconButton(
+                  tooltip: 'Quitar foto',
+                  onPressed: onRemove,
+                  icon: const Icon(Icons.delete_outline_rounded,
+                      size: 20, color: Color(0xFFB3261E)),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+}
+
+class _PhotoPlaceholder extends StatelessWidget {
+  const _PhotoPlaceholder();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        color: AppTheme.mint.withValues(alpha: 0.4),
+        alignment: Alignment.center,
+        child: const Icon(Icons.image_not_supported_outlined,
+            color: AppTheme.forest),
+      );
+}
+
+String _photoErrorText(DomainFailure failure) => switch (failure.code) {
+      'photo_limit' => 'Este lote ya tiene el máximo de 5 fotos.',
+      'photo_size_invalid' => 'La foto supera el tamaño permitido de 5 MB.',
+      'photo_format_invalid' => 'Usa una foto JPG, PNG o WebP.',
+      'photo_processing' =>
+        'La foto sigue procesándose. Actualiza el lote en un momento.',
+      'forbidden' => 'No tienes permiso para modificar las fotos de este lote.',
+      'not_found' =>
+        'No encontramos el lote o la foto. Actualiza e intenta otra vez.',
+      'storage_unavailable' ||
+      'storage_upload_failed' =>
+        'No se pudo cargar la foto. Revisa tu conexión e intenta de nuevo.',
+      _ => 'No pudimos guardar la foto. Intenta de nuevo.',
+    };
 
 class _ProductField extends StatelessWidget {
   const _ProductField({
