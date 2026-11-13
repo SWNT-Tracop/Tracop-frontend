@@ -130,3 +130,103 @@ abstract final class ProfileStrings {
         _ => 'No pudimos actualizar la información. Intenta de nuevo.'
       };
 }
+
+abstract final class ProviderProfileStrings {
+  static const title = 'Perfil de proveedor';
+  static const onlyProducers = 'Esta sección es solo para productores.';
+  static const steps = [
+    'Tu operación',
+    'Ubicación',
+    'Punto de recogida',
+    'Sobre tu oferta'
+  ];
+  static String stepOf(int step, int total, String name) =>
+      'Paso $step de $total · $name';
+  static const saveProfile = 'Guardar perfil';
+  static const draftRestored =
+      'Recuperamos el borrador que dejaste. Puedes seguir donde ibas.';
+  static const draftKept = 'Tu borrador queda guardado en este dispositivo.';
+
+  static const nameRequired = 'Escribe el nombre de tu finca o negocio.';
+  static const locationRequired =
+      'Elige primero el departamento y luego el municipio.';
+  static const pointRequired =
+      'Elige el punto de recogida en el mapa o usa la opción manual.';
+  static const pointOutside = 'Elige un punto dentro de Colombia.';
+  static String descriptionTooLong(int max) =>
+      'La descripción no puede superar $max caracteres.';
+  static const offlineSave =
+      'Guardamos tu borrador en este dispositivo. Conéctate para enviar el perfil.';
+  static const gpsUnavailable =
+      'El GPS del dispositivo no está habilitado en esta versión. Puedes marcar el mapa o ingresar el punto manualmente.';
+
+  static const nameTitle = '¿Cómo se llama tu operación?';
+  static const nameBody =
+      'Este nombre lo verán las personas que buscan tus productos.';
+  static const nameLabel = 'Nombre de la finca o negocio';
+  static const producerTypeTitle = '¿Cómo produces?';
+  static const producerTypes = ['Finca familiar', 'Asociación', 'Negocio'];
+
+  static const locationTitle = '¿Dónde está tu operación?';
+  static const locationBody = 'Elige departamento y municipio de la lista.';
+  static const department = 'Departamento';
+  static const departmentHint = 'Seleccionar departamento';
+  static const municipality = 'Municipio';
+  static const municipalityHint = 'Seleccionar municipio';
+  static const municipalityLocked = 'Elige primero el departamento';
+
+  static const pointTitle = 'Marca el punto de recogida';
+  static const pointBody =
+      'Toca el mapa en el lugar aproximado donde podemos recoger tus productos.';
+  static const useReference = 'Usar ubicación de referencia';
+  static const useGps = 'Usar mi ubicación GPS';
+  static const privacy = 'La ubicación exacta no se muestra a compradores.';
+  static const manualShow = 'Ingresar coordenadas manualmente';
+  static const manualHide = 'Ocultar ingreso manual';
+  static const latitude = 'Latitud';
+  static const longitude = 'Longitud';
+  static String point(String lat, String lng) => 'Punto: $lat, $lng';
+  static const mapLabel = 'Mapa de Colombia. Toca para elegir un punto';
+  static const mapTitle = 'COLOMBIA';
+  static const mapNote = 'Mapa esquemático';
+
+  static const offerTitle = 'Cuéntales sobre tu oferta';
+  static const offerBody =
+      'Agrega detalles que ayuden a conocer lo que produces. Es opcional.';
+  static const descriptionLabel = 'Descripción (opcional)';
+  static const descriptionHint = 'Productos, cosechas o forma de entrega';
+  static const descriptionChips = [
+    'Producción orgánica',
+    'Entrega en finca',
+    'Cosecha propia'
+  ];
+  static const chipSeparator = ' · ';
+
+  static const reviewTitle = 'Revisa tu perfil';
+  static const reviewOperation = 'Operación';
+  static const reviewLocation = 'Ubicación';
+  static const reviewPoint = 'Punto';
+  static const reviewDescription = 'Descripción';
+  static const noDescription = 'Sin descripción';
+  static String editSection(String name) => 'Editar $name';
+
+  static const savedTitle = '¡Perfil guardado!';
+  static const savedBody = 'Ya puedes empezar a ofrecer tus productos.';
+  static const firstLot = 'Publicar mi primer lote';
+  static const backToAccount = 'Volver a mi cuenta';
+  static const goHome = 'Ir al inicio';
+
+  static const offline =
+      'Sin conexión. El borrador queda guardado en este dispositivo.';
+
+  static String error(String code) => switch (code) {
+        'invalid_profile' =>
+          'Revisa el nombre, municipio, departamento y descripción.',
+        'invalid_coordinates' => 'Elige un punto dentro de Colombia.',
+        'forbidden' => 'Solo productores pueden guardar este perfil.',
+        'network_error' =>
+          'Sin conexión. El borrador sigue guardado; intenta de nuevo cuando tengas señal.',
+        _ =>
+          'No pudimos guardar el perfil. Verifica los datos e intenta de nuevo.'
+      };
+}
