@@ -30,7 +30,9 @@ void main() {
     expect(find.text('Tomate chonto'), findsOneWidget);
     expect(find.text('Borrador'), findsOneWidget);
 
-    await tester.tap(find.text('Publicar').first);
+    await tester.ensureVisible(find.byTooltip('Publicar lote').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Publicar lote').first);
     await tester.pumpAndSettle();
     expect(find.text('Publicar lote'), findsOneWidget);
     await tester.tap(find.text('Publicar').last);
@@ -72,8 +74,8 @@ void main() {
         lessThan(844));
     expect(repository.created, isNull);
 
-    await _scrollTo(tester, find.byType(DropdownButtonFormField<String>));
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await _scrollTo(tester, find.byKey(const ValueKey('lot-product-selector')));
+    await tester.tap(find.byKey(const ValueKey('lot-product-selector')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Tomate chonto · kg').last);
     await tester.pumpAndSettle();
@@ -108,6 +110,7 @@ void main() {
     expect(created.locationLat, 5.5353);
     expect(created.locationLng, -73.3);
     expect(find.text('Mis lotes').first, findsOneWidget);
+    expect(find.text('Borrador guardado correctamente.'), findsOneWidget);
   });
 
   testWidgets('save and publish creates the lot before publishing it',
@@ -119,8 +122,8 @@ void main() {
     await tester.pumpWidget(_testApp(repository));
     await tester.pumpAndSettle();
 
-    await _scrollTo(tester, find.byType(DropdownButtonFormField<String>));
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await _scrollTo(tester, find.byKey(const ValueKey('lot-product-selector')));
+    await tester.tap(find.byKey(const ValueKey('lot-product-selector')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Tomate chonto · kg').last);
     await tester.pumpAndSettle();
@@ -136,7 +139,7 @@ void main() {
 
     expect(repository.created, isNotNull);
     expect(repository.publishCalls, 1);
-    expect(find.text('Lote publicado.'), findsOneWidget);
+    expect(find.text('Lote publicado correctamente.'), findsOneWidget);
   });
 
   testWidgets('offline save button explains why it cannot save',
@@ -179,6 +182,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('new-product-category')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Tubérculos').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Crear y usar producto'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Crear y usar producto'));
     await tester.pumpAndSettle();

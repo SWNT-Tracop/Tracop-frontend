@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../../core/config/env.dart';
 import '../../../core/result/result.dart';
 import '../../../app/theme.dart';
+import '../../../shared/widgets/option_selectors.dart';
 import '../domain/entities/auth_session.dart';
 import 'providers/auth_provider.dart';
 import '../../home/presentation/home_screen.dart' show homeConnectivityProvider;
@@ -225,18 +226,28 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           const SizedBox(height: 14),
           const Text('¿Cómo participarás?'),
           const SizedBox(height: 8),
-          Wrap(spacing: 8, children: [
-            for (final role in {
-              'producer': 'Productor',
-              'supplier': 'Proveedor',
-              'buyer': 'Comprador',
-              'carrier': 'Transportador'
-            }.entries)
-              ChoiceChip(
-                  label: Text(role.value),
-                  selected: _role == role.key,
-                  onSelected: (_) => setState(() => _role = role.key))
-          ]),
+          OptionCircleSelector<String>(
+            value: _role,
+            options: const [
+              SelectorOption(
+                  value: 'producer',
+                  label: 'Productor',
+                  icon: Icons.agriculture_outlined),
+              SelectorOption(
+                  value: 'supplier',
+                  label: 'Proveedor',
+                  icon: Icons.storefront_outlined),
+              SelectorOption(
+                  value: 'buyer',
+                  label: 'Comprador',
+                  icon: Icons.shopping_bag_outlined),
+              SelectorOption(
+                  value: 'carrier',
+                  label: 'Transportador',
+                  icon: Icons.local_shipping_outlined),
+            ],
+            onChanged: (value) => setState(() => _role = value),
+          ),
           CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               value: _consent,

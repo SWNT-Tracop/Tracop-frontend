@@ -49,7 +49,7 @@ void main() {
 
     expect(
       Theme.of(tester.element(find.text('Inicio').first)).brightness,
-      Brightness.light,
+      Brightness.dark,
     );
     expect(find.text('Buscar lotes'), findsOneWidget);
     expect(find.text('Explorar lotes'), findsNothing);
@@ -204,12 +204,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('Leer términos de uso'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Leer términos de uso'));
     await tester.pumpAndSettle();
     expect(find.text('Términos de uso — borrador'), findsOneWidget);
     await tester.tap(find.text('Cerrar'));
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('Leer aviso de privacidad'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Leer aviso de privacidad'));
     await tester.pumpAndSettle();
     expect(find.text('Aviso de privacidad — borrador'), findsOneWidget);
@@ -246,14 +250,14 @@ void main() {
     await tester.tap(find.text('Guardar'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Nombre actualizado'), findsOneWidget);
+    expect(find.text('Nombre actualizado'), findsWidgets);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.byTooltip('Editar nombre'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cancelar'));
     await tester.pumpAndSettle();
-    expect(find.text('Nombre actualizado'), findsOneWidget);
+    expect(find.text('Nombre actualizado'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 

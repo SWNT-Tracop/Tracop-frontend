@@ -31,12 +31,16 @@ void main() {
     expect(find.textContaining('Bogotá'), findsWidgets);
     await tester.tap(find.text('Tomate chonto'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Ver lote'));
+    await tester.pumpAndSettle();
 
     expect(find.text('Detalle del lote'), findsOneWidget);
     expect(find.text('Ubicación de recogida'), findsNothing);
     expect(find.text('Precio por kg'), findsNothing); // Buyer price leads.
     expect(find.textContaining('3.000'), findsOneWidget);
     await tester.tap(find.byTooltip('Volver a resultados'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.flip_rounded).first);
     await tester.pumpAndSettle();
     expect(find.text('Buscar lotes'), findsOneWidget);
     expect(find.text('Tomate chonto'), findsOneWidget);

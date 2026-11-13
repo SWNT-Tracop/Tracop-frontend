@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../app/theme.dart';
+import '../../../shared/widgets/option_selectors.dart';
 import '../../../core/result/result.dart';
 import '../../auth/presentation/providers/auth_provider.dart';
 import '../../home/presentation/home_screen.dart';
@@ -325,30 +326,40 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
 
     if (!mounted) return;
     setState(() => _photoError = null);
+    ref.read(localLotModifiedAtProvider.notifier).state = {
+      ...ref.read(localLotModifiedAtProvider),
+      saved.id: DateTime.now(),
+    };
     _invalidateLotViews(saved.id);
     final message = publishFailure != null
         ? 'Guardado como borrador. No se pudo publicar: ${lotErrorText(publishFailure)}'
         : publish
-            ? 'Lote publicado.'
+            ? 'Lote publicado correctamente.'
             : wasEditing
-                ? 'Cambios guardados.'
-                : 'Borrador guardado.';
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(message),
-        backgroundColor:
-            publishFailure != null ? const Color(0xFFB3261E) : AppTheme.forest,
-        duration: const Duration(seconds: 6),
-        action: publishFailure?.code == 'profile_required'
-            ? SnackBarAction(
-                label: 'Completar perfil',
-                textColor: Colors.white,
-                onPressed: () => context.go('/perfil/proveedor'),
-              )
-            : null,
-      ));
+                ? 'Cambios guardados correctamente.'
+                : 'Borrador guardado correctamente.';
+    final messenger = ScaffoldMessenger.of(context);
+    final router = GoRouter.of(context);
+    final confirmation = SnackBar(
+      content: Text(message),
+      backgroundColor:
+          publishFailure != null ? const Color(0xFFB3261E) : AppTheme.forest,
+      duration: const Duration(seconds: 5),
+      behavior: SnackBarBehavior.floating,
+      action: publishFailure?.code == 'profile_required'
+          ? SnackBarAction(
+              label: 'Completar perfil',
+              textColor: Colors.white,
+              onPressed: () => router.go('/perfil/proveedor'),
+            )
+          : null,
+    );
     context.go('/lotes');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(confirmation);
+    });
   }
 
   void _revealValidation() {
@@ -1313,30 +1324,24 @@ class _ProductField extends StatelessWidget {
           ),
           const SizedBox(height: 8),
         ],
-        DropdownButtonFormField<String>(
-          key: ValueKey(productId),
-          initialValue: productId,
-          isExpanded: true,
-          decoration: InputDecoration(
-            labelText: 'Producto',
-            hintText: products.isLoading && items.isEmpty
-                ? 'Cargando productos…'
-                : 'Selecciona',
-            errorText: errorMessage,
-          ),
-          items: [
+        SearchableSheetSelector<String>(
+          key: const ValueKey('lot-product-selector'),
+          label: 'Producto',
+          value: productId,
+          hint: products.isLoading && items.isEmpty
+              ? 'Cargando productos…'
+              : 'Selecciona',
+          errorText: errorMessage,
+          enabled: enabled && items.isNotEmpty,
+          options: [
             for (final product in items)
-              DropdownMenuItem(
-                value: product.id,
-                child: Text('${product.name} · ${product.unit}'),
-              ),
+              SelectorOption(
+                  value: product.id,
+                  label: '${product.name} · ${product.unit}'),
             if (isEditing && selectedMissing)
-              DropdownMenuItem(
-                value: productId,
-                child: const Text('Producto actual'),
-              ),
+              SelectorOption(value: productId!, label: 'Producto actual'),
           ],
-          onChanged: enabled && items.isNotEmpty ? onChanged : null,
+          onChanged: onChanged,
         ),
         if (!products.isLoading && !products.hasError && items.isEmpty) ...[
           const SizedBox(height: 8),
@@ -1502,44 +1507,35 @@ class _CreateProductSheetState extends ConsumerState<_CreateProductSheet> {
               else if (items.isEmpty && !categories.isLoading)
                 const Text(
                     'Todavía no hay categorías. Pídele al equipo TRACOP que agregue una antes de crear el producto.'),
-              DropdownButtonFormField<String>(
+              SearchableSheetSelector<String>(
                 key: const ValueKey('new-product-category'),
-                initialValue: selectedCategory,
-                isExpanded: true,
-                decoration: InputDecoration(
-                  labelText: 'Categoría',
-                  hintText: categories.isLoading
-                      ? 'Cargando categorías…'
-                      : 'Selecciona',
-                ),
-                items: [
-                  for (final category in items)
-                    DropdownMenuItem(
-                      value: category.id,
-                      child: Text(category.name),
-                    ),
-                ],
-                onChanged: _saving || items.isEmpty
-                    ? null
-                    : (value) => setState(() {
-                          _categoryId = value;
-                          _error = null;
-                        }),
+                label: 'Categoría',
+                value: selectedCategory,
+                hint: categories.isLoading
+                    ? 'Cargando categorías…'
+                    : 'Selecciona',
+                enabled: !_saving && items.isNotEmpty,
+                options: items
+                    .map((category) => SelectorOption(
+                        value: category.id, label: category.name))
+                    .toList(growable: false),
+                onChanged: (value) => setState(() {
+                  _categoryId = value;
+                  _error = null;
+                }),
               ),
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _unit,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Unidad de venta'),
-                items: [
-                  for (final unit in _units.entries)
-                    DropdownMenuItem(value: unit.key, child: Text(unit.value)),
-                ],
-                onChanged: _saving
-                    ? null
-                    : (value) {
-                        if (value != null) setState(() => _unit = value);
-                      },
+              Text('Unidad de venta',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              OptionCardGrid<String>(
+                value: _unit,
+                options: _units.entries
+                    .map((unit) =>
+                        SelectorOption(value: unit.key, label: unit.value))
+                    .toList(growable: false),
+                onChanged:
+                    _saving ? (_) {} : (value) => setState(() => _unit = value),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 12),

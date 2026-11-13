@@ -42,25 +42,34 @@ void main() {
         child: MaterialApp.router(routerConfig: router),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
 
-    await tester.enterText(
-        find.byKey(const ValueKey('displayName')), 'Finca Prueba');
-    await tester.enterText(find.byKey(const ValueKey('municipality')), 'Tunja');
-    await tester.enterText(find.byKey(const ValueKey('department')), 'Boyacá');
-    await tester.enterText(find.byKey(const ValueKey('latitude')), '14');
-    await tester.enterText(find.byKey(const ValueKey('longitude')), '-73.3');
-    tester.binding.focusManager.primaryFocus?.unfocus();
+    await tester.enterText(find.byType(TextField).first, 'Finca Prueba');
+    await tester.tap(find.text('Siguiente'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Guardar perfil'));
+    await tester.tap(find.text('Departamento'));
     await tester.pumpAndSettle();
-
-    expect(find.text('La ubicación debe estar dentro de Colombia.'),
-        findsOneWidget);
-    expect(repository.saved, isNull);
-
-    await tester.enterText(find.byKey(const ValueKey('latitude')), '5.5353');
-    tester.binding.focusManager.primaryFocus?.unfocus();
+    await tester.tap(find.text('Boyacá').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Municipio'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tunja').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Siguiente'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Siguiente'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Elige el punto de recogida'), findsOneWidget);
+    await tester.tap(find.text('Ingresar coordenadas manualmente'));
+    await tester.pumpAndSettle();
+    final coordinates = find.byType(TextField);
+    await tester.enterText(coordinates.at(0), '14');
+    await tester.enterText(coordinates.at(1), '-73.3');
+    await tester.tap(find.text('Siguiente'));
+    await tester.pumpAndSettle();
+    expect(find.text('Elige un punto dentro de Colombia.'), findsOneWidget);
+    await tester.enterText(coordinates.at(0), '5.5353');
+    await tester.tap(find.text('Siguiente'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Guardar perfil'));
     await tester.pumpAndSettle();
@@ -70,7 +79,7 @@ void main() {
     expect(repository.saved?.department, 'Boyacá');
     expect(repository.saved?.lat, 5.5353);
     expect(repository.saved?.lng, -73.3);
-    expect(find.text('Mi cuenta'), findsOneWidget);
+    expect(find.text('¡Perfil guardado!'), findsOneWidget);
   });
 }
 

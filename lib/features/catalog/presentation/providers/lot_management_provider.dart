@@ -14,6 +14,10 @@ final myLotsProvider = FutureProvider<List<Lot>>((ref) async {
   );
 });
 
+/// Frontend-only timestamps for edits made in this client; does not alter API data.
+final localLotModifiedAtProvider =
+    StateProvider<Map<String, DateTime>>((ref) => const {});
+
 /// Lote individual usado para editar un borrador.
 final lotByIdProvider = FutureProvider.family<Lot, String>((ref, id) async {
   final result = await ref.read(catalogRepositoryProvider).getLot(id);

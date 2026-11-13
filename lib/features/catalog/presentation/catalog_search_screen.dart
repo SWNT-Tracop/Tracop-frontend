@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/theme.dart';
+import '../../../shared/widgets/option_selectors.dart';
+import '../../../shared/widgets/lot_interaction_widgets.dart';
 import '../../auth/presentation/providers/auth_provider.dart';
 import '../../home/presentation/home_screen.dart';
 import '../domain/entities/category.dart';
@@ -341,28 +343,24 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
                                 Text('Ordenar:',
                                     style:
                                         Theme.of(context).textTheme.labelLarge),
-                                DropdownButton<String>(
-                                  value: _sort,
-                                  underline: const SizedBox.shrink(),
-                                  items: [
-                                    DropdownMenuItem(
+                                SegmentedButton<String>(
+                                  showSelectedIcon: false,
+                                  segments: [
+                                    const ButtonSegment(
                                         value: 'recent',
-                                        child: Text(isBuyer
-                                            ? 'Más recientes'
-                                            : 'Más recientes')),
+                                        label: Text('Recientes')),
                                     if (isBuyer)
-                                      const DropdownMenuItem(
+                                      const ButtonSegment(
                                           value: 'price',
-                                          child: Text('Menor precio')),
-                                    const DropdownMenuItem(
+                                          label: Text('Menor precio')),
+                                    const ButtonSegment(
                                         value: 'availability',
-                                        child: Text('Disponibilidad')),
+                                        label: Text('Disponibilidad')),
                                   ],
-                                  onChanged: (value) {
-                                    if (value != null) {
-                                      setState(() => _sort = value);
-                                      _load(reset: true);
-                                    }
+                                  selected: {_sort},
+                                  onSelectionChanged: (value) {
+                                    setState(() => _sort = value.first);
+                                    _load(reset: true);
                                   },
                                 ),
                                 if (_hasFilters)
@@ -519,91 +517,98 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
           borderRadius: BorderRadius.circular(20),
           side: const BorderSide(color: AppTheme.outline)),
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => context.push('/lots/${lot.id}',
-            extra: {'from': GoRouterState.of(context).uri.toString()}),
-        child: Padding(
-            padding: const EdgeInsets.all(16),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (lot.photos.isNotEmpty) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: SizedBox(
-                    height: 148,
-                    width: double.infinity,
-                    child: Image.network(
-                      lot.photos.first.url,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: AppTheme.mint.withValues(alpha: 0.4),
-                        alignment: Alignment.center,
-                        child: const Icon(Icons.image_not_supported_outlined,
-                            color: AppTheme.forest),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(
-                    child: Text(productName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.ink))),
-                if (isBuyer)
-                  Text(price,
+      child: Padding(
+          padding: const EdgeInsets.all(16),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              LotThumbnail(
+                  url: lot.photos.firstOrNull?.url,
+                  heroTag: 'lot-photo-${lot.id}',
+                  size: 64),
+              const SizedBox(width: 12),
+              Expanded(
+                  child: Text(productName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: AppTheme.forest, fontWeight: FontWeight.w700)),
-              ]),
-              const SizedBox(height: 8),
-              Text('$qty ${lot.unit}',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyLarge
-                      ?.copyWith(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8),
-              Row(children: [
-                const Icon(Icons.event_available_outlined,
-                    size: 18, color: AppTheme.primary),
-                const SizedBox(width: 6),
-                Expanded(
-                    child: Text(
-                        '$availability · hasta ${DateFormat('d MMM', 'es_CO').format(lot.availableUntil.toLocal())}',
-                        style: const TextStyle(fontSize: 14)))
-              ]),
-              const SizedBox(height: 6),
-              Row(children: [
-                Icon(
-                    isCarrier
-                        ? Icons.local_shipping_outlined
-                        : Icons.place_outlined,
-                    size: 18,
-                    color: AppTheme.mutedText),
-                const SizedBox(width: 6),
-                Expanded(
-                    child: Text(location,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 14, color: AppTheme.mutedText))),
-                if (!isBuyer)
-                  Text(price,
+                          fontWeight: FontWeight.w700, color: AppTheme.ink))),
+              if (isBuyer)
+                Text(price,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: AppTheme.forest, fontWeight: FontWeight.w700)),
+            ]),
+            const SizedBox(height: 8),
+            Text('$qty ${lot.unit}',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyLarge
+                    ?.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Row(children: [
+              const Icon(Icons.event_available_outlined,
+                  size: 18, color: AppTheme.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                  child: Text(
+                      '$availability · hasta ${DateFormat('d MMM', 'es_CO').format(lot.availableUntil.toLocal())}',
+                      style: const TextStyle(fontSize: 14)))
+            ]),
+            const SizedBox(height: 6),
+            Row(children: [
+              Icon(
+                  isCarrier
+                      ? Icons.local_shipping_outlined
+                      : Icons.place_outlined,
+                  size: 18,
+                  color: AppTheme.mutedText),
+              const SizedBox(width: 6),
+              Expanded(
+                  child: Text(location,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontWeight: FontWeight.w700, color: AppTheme.forest))
-              ]),
-            ])),
-      ),
+                          fontSize: 14, color: AppTheme.mutedText))),
+              if (!isBuyer)
+                Text(price,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, color: AppTheme.forest))
+            ]),
+          ])),
     );
-    if (reducedMotion || index >= 8) return card;
+    final detailBack = Container(
+      constraints: const BoxConstraints(minHeight: 196),
+      color: AppTheme.mint,
+      padding: const EdgeInsets.all(18),
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('$productName · Detalles',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: AppTheme.forest, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 10),
+            Text(
+                'Calidad: ${lot.qualityGrade?.isNotEmpty == true ? lot.qualityGrade : 'No especificada'}'),
+            Text('$qty ${lot.unit} · $price por ${lot.unit}'),
+            Text(
+                'Disponible hasta ${DateFormat('d MMM y', 'es_CO').format(lot.availableUntil.toLocal())}'),
+            const SizedBox(height: 12),
+            Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.tonalIcon(
+                    onPressed: () => context.push('/lots/${lot.id}', extra: {
+                          'from': GoRouterState.of(context).uri.toString()
+                        }),
+                    icon: const Icon(Icons.open_in_new),
+                    label: const Text('Ver lote'))),
+          ]),
+    );
+    final flipCard = FlipLotCard(
+        front: card, back: detailBack, initiallyAnimate: index == 0);
+    if (reducedMotion || index >= 8) return flipCard;
     return _StaggeredLotCard(
-        key: ValueKey('lot-entry-${lot.id}'), index: index, child: card);
+        key: ValueKey('lot-entry-${lot.id}'), index: index, child: flipCard);
   }
 
   List<Widget> _activeChips(List<Category> categories, List<Product> products) {
@@ -736,14 +741,14 @@ class _FilterPanelState extends State<_FilterPanel> {
           children: [
             Text('Filtros', style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 16),
-            DropdownButtonFormField<String?>(
-                initialValue: category,
-                decoration: const InputDecoration(labelText: 'Categoría'),
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('Todas')),
-                  ...widget.categories.map((item) =>
-                      DropdownMenuItem(value: item.id, child: Text(item.name)))
-                ],
+            SearchableSheetSelector<String>(
+                label: 'Categoría',
+                value: category,
+                clearLabel: 'Todas las categorías',
+                options: widget.categories
+                    .map((item) =>
+                        SelectorOption(value: item.id, label: item.name))
+                    .toList(growable: false),
                 onChanged: (value) => setState(() {
                       category = value;
                       product = null;
@@ -751,17 +756,16 @@ class _FilterPanelState extends State<_FilterPanel> {
                       widget.onProduct(null);
                     })),
             const SizedBox(height: 12),
-            DropdownButtonFormField<String?>(
-                initialValue: product,
-                decoration: const InputDecoration(labelText: 'Producto'),
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('Todos')),
-                  ...widget.products
-                      .where((item) =>
-                          category == null || item.categoryId == category)
-                      .map((item) => DropdownMenuItem(
-                          value: item.id, child: Text(item.name)))
-                ],
+            SearchableSheetSelector<String>(
+                label: 'Producto',
+                value: product,
+                clearLabel: 'Todos los productos',
+                options: widget.products
+                    .where((item) =>
+                        category == null || item.categoryId == category)
+                    .map((item) =>
+                        SelectorOption(value: item.id, label: item.name))
+                    .toList(growable: false),
                 onChanged: (value) => setState(() {
                       product = value;
                       widget.onProduct(value);

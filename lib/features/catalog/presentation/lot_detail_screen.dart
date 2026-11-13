@@ -101,11 +101,16 @@ class LotDetailScreen extends ConsumerWidget {
                           height: 240,
                           child: PageView.builder(
                             itemCount: item.photos.length,
-                            itemBuilder: (context, index) => Image.network(
-                              item.photos[index].url,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) =>
-                                  const _LotPhotoPlaceholder(),
+                            itemBuilder: (context, index) => Hero(
+                              tag: index == 0
+                                  ? 'lot-photo-${item.id}'
+                                  : 'lot-photo-${item.id}-$index',
+                              child: Image.network(
+                                item.photos[index].url,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    const _LotPhotoPlaceholder(),
+                              ),
                             ),
                           ),
                         ),
