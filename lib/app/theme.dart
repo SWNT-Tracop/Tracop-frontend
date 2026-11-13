@@ -10,6 +10,15 @@ class AppTheme {
   static const Color mutedText = Color(0xFF6B7280);
   static const Color outline = Color(0xFFE5E7EB);
   static const Color white = Colors.white;
+  static const Color headerSurface = Color(0xFFFDFBF3);
+  static const Color warningSurface = Color(0xFFFFF3CD);
+  static const Color warningIcon = Color(0xFF704E00);
+  static const Color warningText = Color(0xFF553B00);
+  static const Color danger = Color(0xFFC75B58);
+  static const Color buyerAccent = Color(0xFF315E9E);
+  static const Color carrierAccent = Color(0xFF8A5A00);
+  static const Color mapSurface = Color(0xFFE5EFE7);
+  static const Color mapLand = Color(0xFFBDD7C5);
   static const double radiusSurface = 24;
   static const double radiusControl = 12;
   static const StadiumBorder pillShape = StadiumBorder();

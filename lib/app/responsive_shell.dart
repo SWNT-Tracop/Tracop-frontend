@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import '../core/i18n/strings.dart';
 import '../features/home/presentation/home_screen.dart';
+import 'messenger.dart';
 import 'theme.dart';
 
 class ResponsiveShell extends ConsumerWidget {
@@ -11,11 +13,21 @@ class ResponsiveShell extends ConsumerWidget {
   final String currentLocation;
   final Widget child;
 
+  static const _logoAsset =
+      'assets/branding/tracop-logo-horizontal-fondo-crema.svg';
+  static const _isotypeAsset = 'assets/branding/tracop-isotipo.svg';
+  static const _compactBreakpoint = 600.0;
+  static const _expandedBreakpoint = 1024.0;
+
   static const _destinations = <({String path, String label, IconData icon})>[
-    (path: '/', label: 'Inicio', icon: Icons.home_outlined),
-    (path: '/buscar', label: 'Buscar', icon: Icons.search),
-    (path: '/lotes', label: 'Mis lotes', icon: Icons.inventory_2_outlined),
-    (path: '/perfil', label: 'Perfil', icon: Icons.person_outline),
+    (path: '/', label: NavStrings.home, icon: Icons.home_outlined),
+    (path: '/buscar', label: NavStrings.search, icon: Icons.search),
+    (
+      path: '/lotes',
+      label: NavStrings.myLots,
+      icon: Icons.inventory_2_outlined
+    ),
+    (path: '/perfil', label: NavStrings.profile, icon: Icons.person_outline),
   ];
 
   int get _selectedIndex {
@@ -26,8 +38,23 @@ class ResponsiveShell extends ConsumerWidget {
     return index < 0 ? 0 : index;
   }
 
+  // Atras en Android: vuelve a la seccion o al inicio en vez de cerrar la app.
+  String? get _backTarget {
+    if (currentLocation == '/') return null;
+    final section = _destinations[_selectedIndex].path;
+    return currentLocation == section ? '/' : section;
+  }
+
+  void _onConnectivityChange(AsyncValue<bool>? previous, AsyncValue<bool> next) {
+    final before = previous?.valueOrNull, now = next.valueOrNull;
+    if (before == null || now == null || before == now) return;
+    showAppNotice(now ? SyncStrings.backOnline : SyncStrings.lostConnection,
+        icon: now ? Icons.cloud_done_outlined : Icons.cloud_off_outlined);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen(homeConnectivityProvider, _onConnectivityChange);
     final user = ref.watch(homeUserProvider).valueOrNull;
     final connectivity = ref.watch(homeConnectivityProvider);
     final lots = currentLocation == '/' ? ref.watch(homeLotsProvider) : null;
@@ -35,16 +62,16 @@ class ResponsiveShell extends ConsumerWidget {
     final syncing = lots?.isLoading ?? false;
     final failed = lots?.hasError ?? false;
     final syncLabel = connected == null
-        ? 'Comprobando conexión'
+        ? SyncStrings.checking
         : connected == false
-            ? 'Sin conexión'
+            ? SyncStrings.offline
             : syncing
-                ? 'Actualizando'
+                ? SyncStrings.updating
                 : failed
-                    ? 'Pendiente'
+                    ? SyncStrings.failed
                     : currentLocation == '/'
-                        ? 'Al día'
-                        : 'En línea';
+                        ? SyncStrings.upToDate
+                        : SyncStrings.online;
     final syncIcon = connected == null
         ? Icons.cloud_sync_outlined
         : connected == false
@@ -59,173 +86,187 @@ class ResponsiveShell extends ConsumerWidget {
         : connected == null
             ? AppTheme.mutedText
             : AppTheme.forest;
-    final displayName = user?.fullName.trim().isNotEmpty == true
-        ? user!.fullName.trim()
-        : 'Mi cuenta';
-    final avatarLetter = displayName == 'Mi cuenta'
-        ? '?'
-        : displayName.characters.first.toUpperCase();
+    final hasName = user?.fullName.trim().isNotEmpty == true;
+    final displayName = hasName ? user!.fullName.trim() : NavStrings.myAccount;
+    final avatarLetter =
+        hasName ? displayName.characters.first.toUpperCase() : '?';
+    final sectionTitle = _destinations[_selectedIndex].label;
+    final router = GoRouter.maybeOf(context);
+    final backTarget = router == null ? null : _backTarget;
 
-    return LayoutBuilder(builder: (context, constraints) {
-      final width = constraints.maxWidth;
-      if (width < 600) {
-        return Scaffold(
-          appBar: AppBar(
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            centerTitle: false,
-            toolbarHeight: 61,
-            backgroundColor: const Color(0xFFFDFBF3),
-            bottom: const PreferredSize(
-              preferredSize: Size.fromHeight(1),
-              child: Divider(height: 1, thickness: 1, color: AppTheme.outline),
-            ),
-            title: Row(
-              children: [
-                SvgPicture.asset(
-                  'assets/branding/tracop-logo-horizontal-fondo-crema.svg',
-                  width: 112,
-                  height: 34,
-                  fit: BoxFit.contain,
-                  semanticsLabel: 'TRACOP Agro',
+    return PopScope(
+      canPop: backTarget == null || router!.canPop(),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && backTarget != null) context.go(backTarget);
+      },
+      child: LayoutBuilder(builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        if (width < _compactBreakpoint) {
+          return Scaffold(
+            appBar: AppBar(
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              centerTitle: false,
+              toolbarHeight: 61,
+              backgroundColor: AppTheme.headerSurface,
+              bottom: const PreferredSize(
+                preferredSize: Size.fromHeight(1),
+                child:
+                    Divider(height: 1, thickness: 1, color: AppTheme.outline),
+              ),
+              title: Row(
+                children: [
+                  SvgPicture.asset(
+                    _logoAsset,
+                    width: 112,
+                    height: 34,
+                    fit: BoxFit.contain,
+                    semanticsLabel: NavStrings.brandLogoLabel,
+                  ),
+                ],
+              ),
+              actions: [
+                Tooltip(
+                  message: syncLabel,
+                  child: Semantics(
+                    label: syncLabel,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Icon(syncIcon, color: syncColor, size: 22),
+                    ),
+                  ),
+                ),
+                Tooltip(
+                  message: NavStrings.profileTooltip(displayName),
+                  child: InkWell(
+                    onTap: () => context.go('/perfil'),
+                    borderRadius: BorderRadius.circular(24),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 8),
+                      child: CircleAvatar(
+                        radius: 17,
+                        backgroundColor: AppTheme.mint,
+                        foregroundColor: AppTheme.forest,
+                        child: Text(
+                          avatarLetter,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
-            actions: [
-              Tooltip(
-                message: syncLabel,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Icon(syncIcon, color: syncColor, size: 22),
-                ),
-              ),
-              Tooltip(
-                message: 'Perfil: $displayName',
-                child: InkWell(
-                  onTap: () => context.go('/perfil'),
-                  borderRadius: BorderRadius.circular(24),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    child: CircleAvatar(
-                      radius: 17,
-                      backgroundColor: AppTheme.mint,
-                      foregroundColor: AppTheme.forest,
-                      child: Text(
-                        avatarLetter,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          body: SafeArea(top: false, child: child),
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: _selectedIndex,
-            onDestinationSelected: (index) =>
-                context.go(_destinations[index].path),
-            destinations: [
-              for (final item in _destinations)
-                NavigationDestination(icon: Icon(item.icon), label: item.label)
-            ],
-          ),
-        );
-      }
+            body: SafeArea(top: false, child: child),
+            bottomNavigationBar: NavigationBar(
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: (index) =>
+                  context.go(_destinations[index].path),
+              destinations: [
+                for (final item in _destinations)
+                  NavigationDestination(
+                      icon: Icon(item.icon), label: item.label)
+              ],
+            ),
+          );
+        }
 
-      final expanded = width > 1024;
-      return Scaffold(
-        body: Row(children: [
-          NavigationRail(
-            extended: expanded,
-            minExtendedWidth: 224,
-            selectedIndex: _selectedIndex,
-            onDestinationSelected: (index) =>
-                context.go(_destinations[index].path),
-            leading: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: expanded
-                  ? SvgPicture.asset(
-                      'assets/branding/tracop-logo-horizontal-fondo-crema.svg',
-                      width: 164,
-                      height: 42,
-                      fit: BoxFit.contain,
-                      semanticsLabel: 'TRACOP Agro',
-                    )
-                  : SvgPicture.asset(
-                      'assets/branding/tracop-isotipo.svg',
-                      width: 34,
-                      height: 34,
-                      semanticsLabel: 'Isotipo TRACOP',
-                    ),
-            ),
-            destinations: [
-              for (final item in _destinations)
-                NavigationRailDestination(
-                    icon: Icon(item.icon), label: Text(item.label))
-            ],
-          ),
-          const VerticalDivider(width: 1),
-          Expanded(
-              child: Column(children: [
-            Container(
-              height: 68,
-              decoration: const BoxDecoration(
-                color: Color(0xFFFDFBF3),
-                border: Border(bottom: BorderSide(color: AppTheme.outline)),
+        final expanded = width > _expandedBreakpoint;
+        return Scaffold(
+          body: Row(children: [
+            NavigationRail(
+              extended: expanded,
+              minExtendedWidth: 224,
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: (index) =>
+                  context.go(_destinations[index].path),
+              leading: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: expanded
+                    ? SvgPicture.asset(
+                        _logoAsset,
+                        width: 164,
+                        height: 42,
+                        fit: BoxFit.contain,
+                        semanticsLabel: NavStrings.brandLogoLabel,
+                      )
+                    : SvgPicture.asset(
+                        _isotypeAsset,
+                        width: 34,
+                        height: 34,
+                        semanticsLabel: NavStrings.brandIsotypeLabel,
+                      ),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 28),
-              child: Row(children: [
-                Text(
-                  currentLocation == '/' ? 'Inicio' : 'TRACOP Agro',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const Spacer(),
-                _SyncBadge(label: syncLabel, icon: syncIcon, color: syncColor),
-                const SizedBox(width: 18),
-                InkWell(
-                  onTap: () => context.go('/perfil'),
-                  borderRadius: BorderRadius.circular(22),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                    child: Row(children: [
-                      CircleAvatar(
-                        radius: 18,
-                        backgroundColor: AppTheme.mint,
-                        foregroundColor: AppTheme.forest,
-                        child: Text(avatarLetter,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w700)),
-                      ),
-                      const SizedBox(width: 10),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 168),
-                        child: Text(displayName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleMedium),
-                      ),
-                    ]),
-                  ),
-                ),
-              ]),
+              destinations: [
+                for (final item in _destinations)
+                  NavigationRailDestination(
+                      icon: Icon(item.icon), label: Text(item.label))
+              ],
             ),
+            const VerticalDivider(width: 1),
             Expanded(
-                child: Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1440),
-                  child: child),
-            )),
-          ])),
-        ]),
-      );
-    });
+                child: Column(children: [
+              Container(
+                height: 68,
+                decoration: const BoxDecoration(
+                  color: AppTheme.headerSurface,
+                  border: Border(bottom: BorderSide(color: AppTheme.outline)),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Row(children: [
+                  Text(
+                    sectionTitle,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const Spacer(),
+                  _SyncBadge(
+                      label: syncLabel, icon: syncIcon, color: syncColor),
+                  const SizedBox(width: 18),
+                  InkWell(
+                    onTap: () => context.go('/perfil'),
+                    borderRadius: BorderRadius.circular(22),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 8, horizontal: 4),
+                      child: Row(children: [
+                        CircleAvatar(
+                          radius: 18,
+                          backgroundColor: AppTheme.mint,
+                          foregroundColor: AppTheme.forest,
+                          child: Text(avatarLetter,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w700)),
+                        ),
+                        const SizedBox(width: 10),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 168),
+                          child: Text(displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleMedium),
+                        ),
+                      ]),
+                    ),
+                  ),
+                ]),
+              ),
+              Expanded(
+                  child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1440),
+                    child: child),
+              )),
+            ])),
+          ]),
+        );
+      }),
+    );
   }
 }
 
+// En escritorio el estado se ve con texto, no solo con el icono.
 class _SyncBadge extends StatelessWidget {
   const _SyncBadge({
     required this.label,
@@ -238,11 +279,16 @@ class _SyncBadge extends StatelessWidget {
   final Color color;
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-        message: label,
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Icon(icon, size: 20, color: color),
-        ),
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.all(8),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 20, color: color),
+          const SizedBox(width: 8),
+          Text(label,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(color: color, fontSize: 14)),
+        ]),
       );
 }
