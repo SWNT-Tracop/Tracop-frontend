@@ -45,7 +45,8 @@ class ResponsiveShell extends ConsumerWidget {
     return currentLocation == section ? '/' : section;
   }
 
-  void _onConnectivityChange(AsyncValue<bool>? previous, AsyncValue<bool> next) {
+  void _onConnectivityChange(
+      AsyncValue<bool>? previous, AsyncValue<bool> next) {
     final before = previous?.valueOrNull, now = next.valueOrNull;
     if (before == null || now == null || before == now) return;
     showAppNotice(now ? SyncStrings.backOnline : SyncStrings.lostConnection,

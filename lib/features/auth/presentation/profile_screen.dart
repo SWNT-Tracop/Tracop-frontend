@@ -3,13 +3,18 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../app/motion.dart';
 import '../../../app/theme.dart';
+import '../../../core/i18n/strings.dart';
 import '../../../shared/widgets/profile_widgets.dart';
 import '../../home/presentation/home_screen.dart'
     show homeConnectivityProvider, homeUserProvider;
 import '../domain/entities/auth_session.dart';
 import '../domain/entities/user.dart';
 import 'providers/auth_provider.dart';
+
+const _minNameLength = 2;
+const _maxNameLength = 160;
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -19,7 +24,8 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   User? _user;
-  bool _loading = true, _saving = false, _didSave = false;
+  UpsertProviderProfileRequest? _providerProfile;
+  bool _loading = true, _saving = false, _loggingOut = false;
   bool _whatsAppNotices = true,
       _smsNotices = true,
       _localPreferencesChanged = false;
@@ -32,21 +38,32 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _loadProfile() async {
-    final result = await ref.read(authRepositoryProvider).getMe();
+    final repo = ref.read(authRepositoryProvider);
+    if (mounted && _error != null) setState(() => _error = null);
+    final result = await repo.getMe();
     User? user;
+    String? error;
     result.map(
         ok: (value) => user = value.value,
-        err: (failure) => _error = _messageFor(failure.error.code));
+        err: (failure) => error = ProfileStrings.error(failure.error.code));
     if (user == null) {
-      final cached = await ref.read(authRepositoryProvider).getStoredUser();
+      final cached = await repo.getStoredUser();
       user = cached.map(ok: (value) => value.value, err: (_) => null);
     }
-    if (mounted) {
-      setState(() {
-        _user = user;
-        _loading = false;
-      });
-    }
+    final stored = await repo.getStoredProviderProfile();
+    if (!mounted) return;
+    setState(() {
+      _user = user;
+      _error = error;
+      _providerProfile =
+          stored.map(ok: (value) => value.value, err: (_) => null);
+      _loading = false;
+    });
+  }
+
+  Future<void> _openProviderProfile() async {
+    await context.push('/perfil/proveedor');
+    if (mounted) await _loadProfile();
   }
 
   Future<void> _editName() async {
@@ -54,8 +71,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         context: context,
         isScrollControlled: true,
         useSafeArea: true,
-        builder: (_) => _EditNameSheet(initialName: _user?.fullName ?? ''));
-    if (name == null || !mounted) return;
+        builder: (_) => _EditFieldSheet(
+            title: ProfileStrings.name,
+            initial: _user?.fullName ?? '',
+            keyboard: TextInputType.name));
+    if (name == null || !mounted || name == _user?.fullName) return;
     setState(() {
       _saving = true;
       _error = null;
@@ -66,66 +86,49 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (!mounted) return;
     result.map(
         ok: (value) {
-          setState(() {
-            _user = value.value;
-            _didSave = true;
-          });
+          setState(() => _user = value.value);
           ref.invalidate(homeUserProvider);
           HapticFeedback.selectionClick();
+          _notify(ProfileStrings.nameSaved);
         },
         err: (failure) =>
-            setState(() => _error = _messageFor(failure.error.code)));
+            setState(() => _error = ProfileStrings.error(failure.error.code)));
     setState(() => _saving = false);
+  }
+
+  void _notify(String message) {
+    if (Scaffold.maybeOf(context) == null) return;
+    ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+          behavior: SnackBarBehavior.floating,
+          duration: AppMotion.snackBar,
+          content: Text(message)));
   }
 
   Future<void> _logout(bool offline) async {
+    final body = (offline
+            ? ProfileStrings.logoutOfflineBody
+            : ProfileStrings.logoutBody) +
+        (_localPreferencesChanged ? ProfileStrings.logoutPreferencesNote : '');
     final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-                title: const Text('¿Cerrar sesión?'),
-                content: Text(offline || _localPreferencesChanged
-                    ? 'Hay datos guardados solo en este dispositivo${offline ? ' y no tienes conexión' : ''}. No se perderán al cerrar sesión.'
-                    : 'Podrás volver a entrar cuando quieras.'),
+                title: const Text(ProfileStrings.logoutTitle),
+                content: Text(body),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Seguir aquí')),
+                      child: const Text(ProfileStrings.stay)),
                   FilledButton(
                       onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Cerrar sesión'))
+                      child: const Text(ProfileStrings.logout))
                 ]));
     if (confirmed != true || !mounted) return;
-    setState(() => _saving = true);
+    setState(() => _loggingOut = true);
     await ref.read(authProvider.notifier).logout();
     ref.invalidate(homeUserProvider);
     if (mounted) context.go('/login');
-  }
-
-  Future<void> _editField(String title, String initial,
-      {TextInputType keyboard = TextInputType.text}) async {
-    final updated = await showModalBottomSheet<String>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        builder: (context) => _EditFieldSheet(
-            title: title, initial: initial, keyboard: keyboard));
-    if (updated == null || !mounted || title != 'Nombre') return;
-    setState(() => _saving = true);
-    final result = await ref
-        .read(authRepositoryProvider)
-        .updateMe(UpdateMeRequest(fullName: updated));
-    if (!mounted) return;
-    result.map(
-        ok: (value) {
-          setState(() {
-            _user = value.value;
-            _didSave = true;
-          });
-          ref.invalidate(homeUserProvider);
-        },
-        err: (failure) =>
-            setState(() => _error = _messageFor(failure.error.code)));
-    setState(() => _saving = false);
   }
 
   @override
@@ -138,193 +141,222 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text(_error ?? 'No encontramos los datos de tu cuenta.'),
+                Text(_error ?? ProfileStrings.notFound,
+                    textAlign: TextAlign.center),
                 const SizedBox(height: 12),
                 OutlinedButton(
-                    onPressed: _loadProfile, child: const Text('Reintentar'))
+                    onPressed: _loadProfile,
+                    child: const Text(CommonStrings.retry))
               ])));
     }
+    final offline = connected == false;
+    final busy = _saving || _loggingOut;
     final producer = user.role == 'producer' || user.role == 'supplier';
+    final provider = _providerProfile;
     final roleStyle = switch (user.role) {
       'producer' || 'supplier' => (Icons.agriculture_outlined, AppTheme.forest),
-      'buyer' => (Icons.storefront_outlined, const Color(0xFF315E9E)),
-      'carrier' => (Icons.local_shipping_outlined, const Color(0xFF8A5A00)),
+      'buyer' => (Icons.storefront_outlined, AppTheme.buyerAccent),
+      'carrier' => (Icons.local_shipping_outlined, AppTheme.carrierAccent),
       _ => (Icons.person_outline, AppTheme.forest)
     };
-    return ListView(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-        children: [
-          Text('Mi cuenta',
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  color: AppTheme.forest, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 20),
-          Card(
-              child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: ProfileHeader(
-                      name: user.fullName,
-                      phone: user.phone,
-                      role: _roleLabel(user.role),
-                      icon: roleStyle.$1,
-                      color: roleStyle.$2,
-                      onEdit:
-                          connected == false || _saving ? null : _editName))),
-          AnimatedSwitcher(
-              duration: MediaQuery.disableAnimationsOf(context)
-                  ? Duration.zero
-                  : const Duration(milliseconds: 240),
-              child: _didSave
-                  ? const Padding(
-                      key: ValueKey('saved'),
-                      padding: EdgeInsets.only(top: 8),
-                      child: Wrap(
-                          alignment: WrapAlignment.center,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Icon(Icons.check_circle,
-                                color: AppTheme.forest, size: 18),
-                            SizedBox(width: 6),
-                            Text('Guardado')
-                          ]))
-                  : const SizedBox.shrink()),
-          const SizedBox(height: 14),
-          Card(
-              child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ProfileCompletenessRing(
-                            progress: producer ? .6 : .4, label: 'Perfil'),
-                        const SizedBox(height: 14),
-                        Text(producer
-                            ? 'Te falta completar el perfil de proveedor para publicar lotes.'
-                            : 'Completa tus datos para aprovechar mejor TRACOP.'),
-                        if (producer)
-                          Align(
-                              alignment: Alignment.centerRight,
-                              child: TextButton.icon(
-                                  onPressed: () =>
-                                      context.push('/perfil/proveedor'),
-                                  icon: const Icon(Icons.arrow_forward_rounded),
-                                  label: const Text('Completar ahora')))
-                      ]))),
-          const SizedBox(height: 16),
-          if (_error != null)
-            Semantics(
-                liveRegion: true,
-                child: Text(_error!,
-                    style:
-                        TextStyle(color: Theme.of(context).colorScheme.error))),
-          SettingsSection(title: 'Cuenta', children: [
-            EditableInfoTile(
-                title: 'Nombre',
-                value: user.fullName,
-                icon: Icons.person_outline,
-                onTap: connected == false || _saving
-                    ? null
-                    : () => _editField('Nombre', user.fullName)),
-            ListTile(
-                minTileHeight: 60,
-                leading: const Icon(Icons.phone_outlined),
-                title: const Text('Celular'),
-                subtitle: Text(user.phone))
-          ]),
-          if (producer) ...[
-            const SizedBox(height: 18),
+    // Avance segun datos reales: nombre, celular y perfil de proveedor.
+    final checks = [
+      user.fullName.trim().length >= _minNameLength,
+      user.phone.isNotEmpty,
+      if (producer) provider != null,
+    ];
+    final progress = checks.where((done) => done).length / checks.length;
+    final complete = progress == 1;
+    final onEdit = offline || busy ? null : _editName;
+
+    return RefreshIndicator(
+      onRefresh: _loadProfile,
+      child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+          children: [
+            Text(ProfileStrings.title,
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: AppTheme.forest, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 20),
             Card(
-                color: AppTheme.mint.withValues(alpha: .45),
-                child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () => context.push('/perfil/proveedor'),
-                    child: const Padding(
-                        padding: EdgeInsets.all(18),
-                        child: Row(children: [
-                          CircleAvatar(
-                              backgroundColor: Colors.white,
-                              child: Icon(Icons.storefront_outlined,
-                                  color: AppTheme.forest)),
-                          SizedBox(width: 14),
-                          Expanded(
-                              child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                Text('Perfil de proveedor',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 16)),
-                                SizedBox(height: 4),
-                                Text(
-                                    'Incompleto · necesario para publicar lotes')
-                              ])),
-                          Icon(Icons.chevron_right)
-                        ])))),
-          ],
-          SettingsSection(title: 'Preferencias', children: [
-            SwitchListTile(
-                secondary: const Icon(Icons.chat_outlined),
-                title: const Text('Avisos por WhatsApp'),
-                value: _whatsAppNotices,
-                onChanged: (value) => setState(() {
-                      _whatsAppNotices = value;
-                      _localPreferencesChanged = true;
-                    })),
-            SwitchListTile(
-                secondary: const Icon(Icons.sms_outlined),
-                title: const Text('Avisos por SMS'),
-                value: _smsNotices,
-                onChanged: (value) => setState(() {
-                      _smsNotices = value;
-                      _localPreferencesChanged = true;
-                    })),
-            const Padding(
-                padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Text(
-                    'Estas preferencias solo se mantienen durante esta sesión; aún no se sincronizan.')),
+                child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ProfileHeader(
+                              name: user.fullName,
+                              phone: user.phone,
+                              role: RoleStrings.label(user.role),
+                              icon: roleStyle.$1,
+                              color: roleStyle.$2,
+                              onEdit: onEdit),
+                          if (offline) ...[
+                            const SizedBox(height: 12),
+                            const _InlineHint(
+                                icon: Icons.cloud_off_outlined,
+                                text: ProfileStrings.offlineEditHint),
+                          ],
+                        ]))),
+            if (_saving)
+              const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: LinearProgressIndicator()),
+            if (_error != null)
+              Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Semantics(
+                      liveRegion: true,
+                      child: Text(_error!,
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.error)))),
+            const SizedBox(height: 14),
+            if (!complete)
+              Card(
+                  child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ProfileCompletenessRing(
+                                progress: progress,
+                                label: ProfileStrings.completenessLabel,
+                                hint: producer
+                                    ? ProfileStrings.pendingProvider
+                                    : ProfileStrings.pendingGeneral),
+                            if (producer)
+                              Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton.icon(
+                                      onPressed: _openProviderProfile,
+                                      icon: const Icon(
+                                          Icons.arrow_forward_rounded),
+                                      label: const Text(
+                                          ProfileStrings.completeNow)))
+                          ]))),
+            SettingsSection(title: ProfileStrings.sectionAccount, children: [
+              EditableInfoTile(
+                  title: ProfileStrings.name,
+                  value: user.fullName,
+                  icon: Icons.person_outline,
+                  onTap: onEdit),
+              ListTile(
+                  minTileHeight: 60,
+                  leading: const Icon(Icons.phone_outlined),
+                  title: const Text(ProfileStrings.phone),
+                  subtitle: Text(user.phone))
+            ]),
+            if (producer) ...[
+              const SizedBox(height: 18),
+              Card(
+                  color: AppTheme.mint.withValues(alpha: .45),
+                  child: InkWell(
+                      borderRadius:
+                          BorderRadius.circular(AppTheme.radiusSurface),
+                      onTap: _openProviderProfile,
+                      child: Padding(
+                          padding: const EdgeInsets.all(18),
+                          child: Row(children: [
+                            CircleAvatar(
+                                backgroundColor: AppTheme.white,
+                                child: Icon(
+                                    provider != null
+                                        ? Icons.verified_outlined
+                                        : Icons.storefront_outlined,
+                                    color: AppTheme.forest)),
+                            const SizedBox(width: 14),
+                            Expanded(
+                                child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                  const Text(ProfileStrings.providerCard,
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 16)),
+                                  const SizedBox(height: 4),
+                                  Text(provider != null
+                                      ? ProfileStrings.providerReady(
+                                          provider.displayName,
+                                          provider.municipality)
+                                      : ProfileStrings.providerPending)
+                                ])),
+                            const Icon(Icons.chevron_right)
+                          ])))),
+            ],
+            SettingsSection(
+                title: ProfileStrings.sectionPreferences,
+                children: [
+                  SwitchListTile(
+                      secondary: const Icon(Icons.chat_outlined),
+                      title: const Text(ProfileStrings.whatsapp),
+                      value: _whatsAppNotices,
+                      onChanged: (value) => setState(() {
+                            _whatsAppNotices = value;
+                            _localPreferencesChanged = true;
+                          })),
+                  SwitchListTile(
+                      secondary: const Icon(Icons.sms_outlined),
+                      title: const Text(ProfileStrings.sms),
+                      value: _smsNotices,
+                      onChanged: (value) => setState(() {
+                            _smsNotices = value;
+                            _localPreferencesChanged = true;
+                          })),
+                  const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: Text(ProfileStrings.preferencesNote)),
+                ]),
+            SettingsSection(title: ProfileStrings.sectionHelp, children: [
+              ListTile(
+                  leading: const Icon(Icons.help_outline),
+                  title: const Text(ProfileStrings.helpCenter),
+                  onTap: () => _info(ProfileStrings.helpCenter,
+                      ProfileStrings.helpCenterBody)),
+              ListTile(
+                  leading: const Icon(Icons.support_agent_outlined),
+                  title: const Text(ProfileStrings.support),
+                  onTap: () => _info(
+                      ProfileStrings.supportTitle, ProfileStrings.supportBody))
+            ]),
+            const SettingsSection(
+                title: ProfileStrings.sectionAbout,
+                children: [
+                  ListTile(
+                      leading: Icon(Icons.eco_outlined),
+                      title: Text(ProfileStrings.appName),
+                      subtitle: Text(ProfileStrings.tagline))
+                ]),
+            const SizedBox(height: 20),
+            Card(
+                color: offline
+                    ? AppTheme.warningSurface
+                    : AppTheme.mint.withValues(alpha: .35),
+                child: ListTile(
+                    leading: Icon(offline
+                        ? Icons.cloud_off_outlined
+                        : Icons.cloud_done_outlined),
+                    title: Text(offline
+                        ? ProfileStrings.offline
+                        : ProfileStrings.online),
+                    subtitle: Text(offline
+                        ? ProfileStrings.offlineBody
+                        : ProfileStrings.onlineBody),
+                    minTileHeight: 64)),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+                onPressed: busy ? null : () => _logout(offline),
+                icon: _loggingOut
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.logout),
+                label: Text(_loggingOut
+                    ? ProfileStrings.loggingOut
+                    : ProfileStrings.logout)),
           ]),
-          SettingsSection(title: 'Ayuda y soporte', children: [
-            ListTile(
-                leading: const Icon(Icons.help_outline),
-                title: const Text('Centro de ayuda'),
-                onTap: () => _info('Centro de ayuda',
-                    'Pronto encontrarás aquí formas de contactar al equipo TRACOP.')),
-            ListTile(
-                leading: const Icon(Icons.support_agent_outlined),
-                title: const Text('Contactar soporte'),
-                onTap: () => _info(
-                    'Soporte', 'Estamos preparando este canal de atención.'))
-          ]),
-          const SettingsSection(title: 'Acerca de', children: [
-            ListTile(
-                leading: Icon(Icons.eco_outlined),
-                title: Text('TRACOP'),
-                subtitle: Text('Conectamos el campo con quienes lo necesitan'))
-          ]),
-          const SizedBox(height: 20),
-          Card(
-              color: connected == false
-                  ? const Color(0xFFFFF3CD)
-                  : AppTheme.mint.withValues(alpha: .35),
-              child: ListTile(
-                  leading: Icon(connected == false
-                      ? Icons.cloud_off_outlined
-                      : Icons.cloud_done_outlined),
-                  title:
-                      Text(connected == false ? 'Sin conexión' : 'Conectado'),
-                  subtitle: Text(connected == false
-                      ? 'Mostrando los datos guardados en este dispositivo.'
-                      : 'Tus cambios se guardan al confirmar.'),
-                  minTileHeight: 64)),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-              onPressed: _saving ? null : () => _logout(connected == false),
-              icon: _saving
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.logout),
-              label: Text(_saving ? 'Cerrando sesión…' : 'Cerrar sesión')),
-        ]);
+    );
   }
 
   void _info(String title, String body) => showDialog<void>(
@@ -333,31 +365,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           AlertDialog(title: Text(title), content: Text(body), actions: [
             TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Entendido'))
+                child: const Text(CommonStrings.understood))
           ]));
 }
 
-String _roleLabel(String role) => switch (role) {
-      'producer' => 'Productor',
-      'supplier' => 'Proveedor',
-      'buyer' => 'Comprador',
-      'carrier' => 'Transportista',
-      _ => role
-    };
-String _messageFor(String code) => switch (code) {
-      'invalid_session' => 'Tu sesión venció. Inicia sesión nuevamente.',
-      'network_error' => 'No hay conexión. Mostramos los datos guardados.',
-      'invalid_full_name' => 'El nombre debe tener entre 2 y 160 caracteres.',
-      'user_not_found' => 'No encontramos tu cuenta. Inicia sesión nuevamente.',
-      _ => 'No pudimos actualizar la información. Intenta de nuevo.'
-    };
-
-class _EditNameSheet extends StatelessWidget {
-  const _EditNameSheet({required this.initialName});
-  final String initialName;
+class _InlineHint extends StatelessWidget {
+  const _InlineHint({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
   @override
-  Widget build(BuildContext context) => _EditFieldSheet(
-      title: 'Nombre', initial: initialName, keyboard: TextInputType.name);
+  Widget build(BuildContext context) => Row(children: [
+        Icon(icon, size: 18, color: AppTheme.mutedText),
+        const SizedBox(width: 8),
+        Expanded(
+            child: Text(text, style: Theme.of(context).textTheme.bodySmall)),
+      ]);
 }
 
 class _EditFieldSheet extends StatefulWidget {
@@ -386,7 +408,7 @@ class _EditFieldSheetState extends State<_EditFieldSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Editar ${widget.title.toLowerCase()}',
+            Text(ProfileStrings.editTitle(widget.title),
                 style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 16),
             TextField(
@@ -394,27 +416,31 @@ class _EditFieldSheetState extends State<_EditFieldSheet> {
                 autofocus: true,
                 keyboardType: widget.keyboard,
                 textCapitalization: TextCapitalization.words,
-                maxLength: 160,
+                textInputAction: TextInputAction.done,
+                maxLength: _maxNameLength,
                 decoration:
                     InputDecoration(labelText: widget.title, errorText: error),
+                onChanged: (_) {
+                  if (error != null) setState(() => error = null);
+                },
                 onSubmitted: (_) => _save(context)),
             const SizedBox(height: 8),
             Row(children: [
               Expanded(
                   child: OutlinedButton(
                       onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancelar'))),
+                      child: const Text(CommonStrings.cancel))),
               const SizedBox(width: 12),
               Expanded(
                   child: FilledButton(
                       onPressed: () => _save(context),
-                      child: const Text('Guardar'))),
+                      child: const Text(CommonStrings.save))),
             ])
           ]));
   void _save(BuildContext context) {
     final text = controller.text.trim();
-    if (text.length < 2 || text.length > 160) {
-      setState(() => error = 'Escribe un nombre de entre 2 y 160 caracteres.');
+    if (text.length < _minNameLength || text.length > _maxNameLength) {
+      setState(() => error = ProfileStrings.nameLengthError);
       return;
     }
     Navigator.pop(context, text);

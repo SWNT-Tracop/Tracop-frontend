@@ -34,8 +34,8 @@ void main() {
       initialLocation: '/buscar',
       routes: [
         ShellRoute(
-          builder: (context, state, child) => ResponsiveShell(
-              currentLocation: state.uri.path, child: child),
+          builder: (context, state, child) =>
+              ResponsiveShell(currentLocation: state.uri.path, child: child),
           routes: [
             GoRoute(path: '/', builder: (_, __) => const Text('inicio')),
             GoRoute(path: '/buscar', builder: (_, __) => const Text('buscar')),
