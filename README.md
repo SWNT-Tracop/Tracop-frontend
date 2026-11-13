@@ -93,6 +93,14 @@ flutter run \
   --dart-define=PRIVACY_POLICY_VERSION=v0-draft
 ```
 
+Para el simulador de iOS, usa el host del Mac:
+
+```bash
+flutter run \
+  --dart-define=API_BASE_URL=http://localhost:3000 \
+  --dart-define=PRIVACY_POLICY_VERSION=v0-draft
+```
+
 Direcciones según el entorno:
 
 | Entorno | `API_BASE_URL` |

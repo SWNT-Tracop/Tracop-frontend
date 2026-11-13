@@ -17,6 +17,7 @@ dependencies:
   flutter_secure_storage: ^9.2.2
   connectivity_plus: ^6.1.1
   flutter_svg: ^2.0.17
+  image_picker: ^1.1.2
   uuid: ^4.4.0
   intl: any
   drift: ^2.23.0

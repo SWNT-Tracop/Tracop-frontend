@@ -5,7 +5,12 @@ import 'responsive_shell.dart';
 import 'theme.dart';
 import '../features/auth/presentation/auth_screens.dart';
 import '../features/auth/presentation/profile_screen.dart';
+import '../features/auth/presentation/provider_profile_screen.dart';
 import '../features/auth/presentation/providers/auth_provider.dart';
+import '../features/catalog/presentation/catalog_search_screen.dart';
+import '../features/catalog/presentation/lot_detail_screen.dart';
+import '../features/catalog/presentation/lot_form_screen.dart';
+import '../features/catalog/presentation/my_lots_screen.dart';
 import '../core/config/env.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -21,8 +26,11 @@ final router = GoRouter(
         path: '/registro', builder: (context, state) => const RegisterScreen()),
     GoRoute(
         path: '/otp-verify',
-        builder: (context, state) =>
-            OtpVerifyScreen(phone: state.extra as String? ?? '')),
+        builder: (context, state) => OtpVerifyScreen(
+              phone: state.extra as String? ?? '',
+              providerSetup:
+                  state.uri.queryParameters['providerSetup'] == 'true',
+            )),
     ShellRoute(
       builder: (context, state, child) => AuthenticatedShell(
         currentLocation: state.uri.path,
@@ -42,26 +50,57 @@ final router = GoRouter(
             pageBuilder: (context, state) => _routePage(
                   context,
                   state,
-                  const RoutePlaceholder(title: 'Buscar productos'),
+                  const CatalogSearchScreen(),
                 )),
         GoRoute(
             path: '/lotes',
             pageBuilder: (context, state) => _routePage(
                   context,
                   state,
-                  const RoutePlaceholder(title: 'Mis lotes'),
+                  const MyLotsScreen(),
+                )),
+        GoRoute(
+            path: '/lotes/nuevo',
+            pageBuilder: (context, state) => _routePage(
+                  context,
+                  state,
+                  const LotFormScreen(),
+                )),
+        GoRoute(
+            path: '/lotes/:id/editar',
+            pageBuilder: (context, state) => _routePage(
+                  context,
+                  state,
+                  LotFormScreen(lotId: state.pathParameters['id']!),
+                )),
+        GoRoute(
+            path: '/lots/:id',
+            pageBuilder: (context, state) => _routePage(
+                  context,
+                  state,
+                  LotDetailScreen(lotId: state.pathParameters['id']!),
                 )),
         GoRoute(
             path: '/lotes/:id',
             pageBuilder: (context, state) => _routePage(
                   context,
                   state,
-                  RoutePlaceholder(title: 'Lote ${state.pathParameters['id']}'),
+                  LotDetailScreen(lotId: state.pathParameters['id']!),
                 )),
         GoRoute(
             path: '/perfil',
             pageBuilder: (context, state) =>
                 _routePage(context, state, const ProfileScreen())),
+        GoRoute(
+            path: '/perfil/proveedor',
+            pageBuilder: (context, state) => _routePage(
+                  context,
+                  state,
+                  ProviderProfileScreen(
+                    onboarding:
+                        state.uri.queryParameters['onboarding'] == 'true',
+                  ),
+                )),
       ],
     ),
   ],
@@ -119,8 +158,8 @@ Page<void> _routePage(BuildContext context, GoRouterState state, Widget child) {
   return CustomTransitionPage<void>(
     key: state.pageKey,
     child: child,
-    transitionDuration: const Duration(milliseconds: 360),
-    reverseTransitionDuration: const Duration(milliseconds: 360),
+    transitionDuration: const Duration(milliseconds: 240),
+    reverseTransitionDuration: const Duration(milliseconds: 240),
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       return AnimatedBuilder(
         animation: Listenable.merge([animation, secondaryAnimation]),

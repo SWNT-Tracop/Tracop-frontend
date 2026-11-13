@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../../../../core/result/result.dart';
 import '../entities/category.dart';
 import '../entities/lot.dart' hide Category, Product;
@@ -7,6 +9,8 @@ abstract class CatalogRepository {
   Future<Result<List<Category>, DomainFailure>> getCategories();
   Future<Result<List<Product>, DomainFailure>> getProducts(
       {String? categoryId, String? q});
+  Future<Result<Product, DomainFailure>> createProduct(
+      CreateProductRequest request);
   Future<Result<LotPage, DomainFailure>> searchLots({
     String? cursor,
     int limit = 20,
@@ -29,4 +33,15 @@ abstract class CatalogRepository {
       String id, UpdateLotRequest request);
   Future<Result<Lot, DomainFailure>> publishLot(String id, int version);
   Future<Result<Lot, DomainFailure>> cancelLot(String id, int version);
+  Future<Result<void, DomainFailure>> deleteLot(String id, int version);
+  Future<Result<List<LotPhoto>, DomainFailure>> uploadLotPhoto({
+    required String lotId,
+    required String photoId,
+    required String filename,
+    required Uint8List bytes,
+  });
+  Future<Result<List<LotPhoto>, DomainFailure>> deleteLotPhoto(
+      String lotId, String photoId);
+  Future<Result<List<LotPhoto>, DomainFailure>> reorderLotPhotos(
+      String lotId, List<String> photoIds);
 }

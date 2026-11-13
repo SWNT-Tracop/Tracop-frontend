@@ -26,6 +26,10 @@
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>TRACOP necesita acceso a tus fotos para agregarlas a un lote.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>TRACOP usa la cámara para tomar fotos de los productos de un lote.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

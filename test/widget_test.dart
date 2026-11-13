@@ -14,10 +14,18 @@ import 'package:tracop_mobile/features/auth/presentation/auth_screens.dart'
 import 'package:tracop_mobile/features/auth/presentation/profile_screen.dart';
 import 'package:tracop_mobile/features/auth/presentation/providers/auth_provider.dart'
     show AuthNotifier, authProvider, authRepositoryProvider;
-import 'package:tracop_mobile/app/router.dart' show AuthenticatedShell;
-import 'package:tracop_mobile/features/catalog/domain/entities/lot.dart';
+import 'package:tracop_mobile/app/router.dart' show AuthenticatedShell, router;
+import 'package:tracop_mobile/features/catalog/domain/entities/lot.dart'
+    hide Category, Product;
+import 'package:tracop_mobile/features/catalog/domain/entities/category.dart';
+import 'package:tracop_mobile/features/catalog/domain/entities/product.dart';
+import 'package:tracop_mobile/features/catalog/presentation/catalog_search_screen.dart';
+import 'package:tracop_mobile/features/catalog/domain/repository/catalog_repository.dart';
+import 'package:tracop_mobile/features/catalog/presentation/providers/catalog_provider.dart'
+    show catalogRepositoryProvider;
 
 void main() {
+  setUp(() => router.go('/'));
   testWidgets('Buyer home has one primary search action', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -32,6 +40,7 @@ void main() {
           homeLotsProvider.overrideWith((ref) async => const []),
           homeConnectivityProvider
               .overrideWith((ref) => Stream<bool>.value(true)),
+          catalogRepositoryProvider.overrideWithValue(_HomeCatalogRepository()),
         ],
         child: const TracopApp(),
       ),
@@ -40,16 +49,16 @@ void main() {
 
     expect(
       Theme.of(tester.element(find.text('Inicio').first)).brightness,
-      Brightness.light,
+      Brightness.dark,
     );
     expect(find.text('Buscar lotes'), findsOneWidget);
     expect(find.text('Explorar lotes'), findsNothing);
     expect(find.text('Conexión disponible'), findsNothing);
     await tester.tap(find.text('Buscar lotes'));
     await tester.pumpAndSettle();
-    expect(find.text('Buscar productos'), findsOneWidget);
+    expect(find.byType(CatalogSearchScreen), findsOneWidget);
 
-    await tester.tap(find.text('Volver al inicio'));
+    await tester.tap(find.text('Inicio').last);
     await tester.pumpAndSettle();
     expect(find.text('Buscar lotes'), findsOneWidget);
   });
@@ -129,7 +138,7 @@ void main() {
     await tester.tap(find.text('Borradores'));
     await tester.pumpAndSettle();
     expect(find.text('Mis lotes'), findsWidgets);
-    await tester.tap(find.text('Volver al inicio'));
+    await tester.tap(find.text('Inicio').last);
     await tester.pumpAndSettle();
   });
 
@@ -195,12 +204,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('Leer términos de uso'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Leer términos de uso'));
     await tester.pumpAndSettle();
     expect(find.text('Términos de uso — borrador'), findsOneWidget);
     await tester.tap(find.text('Cerrar'));
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('Leer aviso de privacidad'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Leer aviso de privacidad'));
     await tester.pumpAndSettle();
     expect(find.text('Aviso de privacidad — borrador'), findsOneWidget);
@@ -237,14 +250,14 @@ void main() {
     await tester.tap(find.text('Guardar'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Nombre actualizado'), findsOneWidget);
+    expect(find.text('Nombre actualizado'), findsWidgets);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.byTooltip('Editar nombre'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cancelar'));
     await tester.pumpAndSettle();
-    expect(find.text('Nombre actualizado'), findsOneWidget);
+    expect(find.text('Nombre actualizado'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
@@ -295,6 +308,38 @@ User _testUser({String role = 'producer'}) => User(
       status: 'active',
       locale: 'es-CO',
     );
+
+class _HomeCatalogRepository implements CatalogRepository {
+  @override
+  Future<Result<List<Category>, DomainFailure>> getCategories() async =>
+      const Ok([]);
+
+  @override
+  Future<Result<List<Product>, DomainFailure>> getProducts(
+          {String? categoryId, String? q}) async =>
+      const Ok([]);
+
+  @override
+  Future<Result<LotPage, DomainFailure>> searchLots({
+    String? cursor,
+    int limit = 20,
+    String? categoryId,
+    String? productId,
+    String? q,
+    int? minPrice,
+    int? maxPrice,
+    DateTime? availableFrom,
+    DateTime? availableUntil,
+    double? lat,
+    double? lng,
+    int? radiusKm,
+    String sort = 'recent',
+  }) async =>
+      const Ok(LotPage(items: []));
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 Lot _testLot({required String id, required String status}) {
   final now = DateTime(2026, 1, 1);

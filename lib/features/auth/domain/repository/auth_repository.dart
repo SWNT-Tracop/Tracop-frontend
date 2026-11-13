@@ -15,6 +15,8 @@ abstract class AuthRepository {
   Future<Result<User, DomainFailure>> updateMe(UpdateMeRequest request);
   Future<Result<void, DomainFailure>> upsertProviderProfile(
       UpsertProviderProfileRequest request);
+  Future<Result<UpsertProviderProfileRequest?, DomainFailure>>
+      getStoredProviderProfile();
   Future<Result<User?, DomainFailure>> getStoredUser();
   Future<void> saveSession(AuthSession session);
   Future<Result<String?, DomainFailure>> getStoredRefreshToken();

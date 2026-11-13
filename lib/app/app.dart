@@ -12,7 +12,8 @@ class TracopApp extends ConsumerWidget {
     return MaterialApp.router(
       title: 'TRACOP',
       theme: AppTheme.light,
-      themeMode: ThemeMode.light,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.system,
       routerConfig: router,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,

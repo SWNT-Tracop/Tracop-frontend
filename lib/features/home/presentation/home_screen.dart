@@ -2,12 +2,16 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../../app/theme.dart';
+import '../../../shared/widgets/lot_interaction_widgets.dart';
 import '../../auth/domain/entities/user.dart';
 import '../../auth/presentation/providers/auth_provider.dart';
 import '../../catalog/domain/entities/lot.dart' hide Category, Product;
 import '../../catalog/presentation/providers/catalog_provider.dart';
+import '../../catalog/presentation/providers/lot_management_provider.dart'
+    show catalogProductsProvider;
 
 final homeLotsCacheProvider = StateProvider<List<Lot>?>((ref) => null);
 
@@ -44,6 +48,10 @@ class HomeScreen extends ConsumerWidget {
     final user = ref.watch(homeUserProvider).valueOrNull;
     final lots = ref.watch(homeLotsProvider);
     final cachedLots = ref.watch(homeLotsCacheProvider);
+    final products = ref.watch(catalogProductsProvider).valueOrNull ?? const [];
+    final Map<String, String> productNames = {
+      for (final product in products) product.id: product.name
+    };
     final connectivity = ref.watch(homeConnectivityProvider).valueOrNull;
     final items = lots.valueOrNull ?? cachedLots;
     final isSeller = user?.role == 'producer' || user?.role == 'supplier';
@@ -107,7 +115,16 @@ class HomeScreen extends ConsumerWidget {
                           onPublishedTap: () =>
                               context.go('/lotes?status=published'),
                           onDraftsTap: () => context.go('/lotes?status=draft'),
+                          productNames: productNames,
+                          onLotTap: (id) => context.go('/lots/$id'),
                         ),
+                      ] else if (items != null) ...[
+                        const SizedBox(height: 32),
+                        _RecentLotActivity(
+                            lots: items,
+                            productNames: productNames,
+                            onLotTap: (id) => context.go('/lots/$id'),
+                            onViewAll: () => context.go('/buscar')),
                       ],
                     ],
                   ),
@@ -225,12 +242,16 @@ class _SellerActivity extends StatelessWidget {
     required this.loading,
     required this.onPublishedTap,
     required this.onDraftsTap,
+    required this.productNames,
+    required this.onLotTap,
   });
 
   final List<Lot>? lots;
   final bool loading;
   final VoidCallback onPublishedTap;
   final VoidCallback onDraftsTap;
+  final Map<String, String> productNames;
+  final ValueChanged<String> onLotTap;
 
   @override
   Widget build(BuildContext context) {
@@ -284,7 +305,19 @@ class _SellerActivity extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   )),
           const SizedBox(height: 8),
-          for (final lot in recent.take(2)) _RecentLotLine(lot: lot),
+          for (var index = 0; index < recent.take(5).length; index++)
+            _RecentLotActivityItem(
+                lot: recent[index],
+                productName: productNames[recent[index].productId] ??
+                    'Producto agropecuario',
+                index: index,
+                onTap: () => onLotTap(recent[index].id)),
+          Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                  onPressed: () => context.go('/lotes'),
+                  icon: const Icon(Icons.arrow_forward, size: 18),
+                  label: const Text('Ver todo'))),
         ] else if (!loading && lots != null) ...[
           const SizedBox(height: 16),
           Text(
@@ -328,13 +361,24 @@ class _MetricAction extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(value ?? '—',
-                      style:
-                          Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                color: AppTheme.forest,
-                                fontSize: 27,
-                                height: 1.1,
-                              )),
+                  value == null
+                      ? Text('—',
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineMedium
+                              ?.copyWith(
+                                  color: AppTheme.forest,
+                                  fontSize: 27,
+                                  height: 1.1))
+                      : AnimatedCounter(
+                          value: int.tryParse(value!) ?? 0,
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineMedium
+                              ?.copyWith(
+                                  color: AppTheme.forest,
+                                  fontSize: 27,
+                                  height: 1.1)),
                   const SizedBox(height: 4),
                   Text(label,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -349,53 +393,109 @@ class _MetricAction extends StatelessWidget {
       );
 }
 
-class _RecentLotLine extends StatelessWidget {
-  const _RecentLotLine({required this.lot});
-
-  final Lot lot;
-
+class _RecentLotActivity extends StatelessWidget {
+  const _RecentLotActivity(
+      {required this.lots,
+      required this.productNames,
+      required this.onLotTap,
+      required this.onViewAll});
+  final List<Lot> lots;
+  final Map<String, String> productNames;
+  final ValueChanged<String> onLotTap;
+  final VoidCallback onViewAll;
   @override
   Widget build(BuildContext context) {
-    final statusLabel = switch (lot.status) {
-      'published' => 'Publicado',
-      'draft' => 'Borrador',
-      'reserved' => 'Reservado',
-      'sold_out' => 'Agotado',
-      'cancelled' => 'Cancelado',
-      'expired' => 'Vencido',
-      _ => 'En preparación',
-    };
-    final date = '${lot.availableFrom.day.toString().padLeft(2, '0')}/'
-        '${lot.availableFrom.month.toString().padLeft(2, '0')}';
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Icon(Icons.circle, size: 9, color: _statusColor(lot.status)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              '$statusLabel · disponible desde $date',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.ink.withValues(alpha: .82),
-                    fontSize: 14,
-                  ),
-            ),
-          ),
-        ],
-      ),
-    );
+    final recent = List<Lot>.of(lots)
+      ..sort((a, b) => b.availableFrom.compareTo(a.availableFrom));
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('Actividad reciente',
+          style: Theme.of(context)
+              .textTheme
+              .titleLarge
+              ?.copyWith(color: AppTheme.ink, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 12),
+      if (recent.isEmpty)
+        const Card(
+            child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Text(
+                    'Aún no hay actividad. Cuando tengas lotes o pedidos, aparecerán aquí.')))
+      else ...[
+        for (var i = 0; i < recent.take(5).length; i++)
+          _RecentLotActivityItem(
+              lot: recent[i],
+              productName:
+                  productNames[recent[i].productId] ?? 'Producto agropecuario',
+              index: i,
+              onTap: () => onLotTap(recent[i].id)),
+        Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+                onPressed: onViewAll,
+                icon: const Icon(Icons.arrow_forward, size: 18),
+                label: const Text('Ver todo'))),
+      ],
+    ]);
   }
 }
 
-Color _statusColor(String status) => switch (status) {
-      'published' => AppTheme.primary,
-      'draft' => AppTheme.earth,
-      'reserved' => const Color(0xFF1565C0),
-      'sold_out' || 'cancelled' || 'expired' => AppTheme.mutedText,
-      _ => AppTheme.mutedText,
-    };
+class _RecentLotActivityItem extends StatelessWidget {
+  const _RecentLotActivityItem(
+      {required this.lot,
+      required this.productName,
+      required this.index,
+      required this.onTap});
+  final Lot lot;
+  final String productName;
+  final int index;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    final isDraft = lot.status == 'draft';
+    final isCancelled = lot.status == 'cancelled';
+    final action = isDraft
+        ? 'Guardaste borrador'
+        : isCancelled
+            ? 'Cancelaste'
+            : lot.status == 'published'
+                ? 'Publicaste'
+                : 'Estado del lote';
+    final amount = (int.tryParse(lot.quantityMilli) ?? 0) / 1000;
+    final price =
+        NumberFormat.currency(locale: 'es_CO', symbol: r'$ ', decimalDigits: 0)
+            .format(int.tryParse(lot.unitPrice) ?? 0);
+    final elapsed = DateTime.now().difference(lot.availableFrom.toLocal());
+    final time = elapsed.isNegative
+        ? 'Disponible en ${elapsed.inDays.abs()} d'
+        : elapsed.inDays >= 1
+            ? 'Disponible desde hace ${elapsed.inDays} d'
+            : elapsed.inHours >= 1
+                ? 'Disponible desde hace ${elapsed.inHours} h'
+                : 'Disponible desde hoy';
+    return ActivityTimelineItem(
+      index: index,
+      title: productName,
+      description: action,
+      metadata: '$amount ${lot.unit} · $price/${lot.unit}',
+      timeLabel: time,
+      icon: isDraft
+          ? Icons.edit_note_rounded
+          : isCancelled
+              ? Icons.cancel_outlined
+              : Icons.check_circle_outline_rounded,
+      color: isDraft
+          ? AppTheme.earth
+          : isCancelled
+              ? const Color(0xFFC75B58)
+              : AppTheme.primary,
+      thumbnail: LotThumbnail(
+          url: lot.photos.firstOrNull?.url,
+          heroTag: 'lot-photo-${lot.id}',
+          size: 56),
+      onTap: onTap,
+    );
+  }
+}
 
 class _OfflineNotice extends StatelessWidget {
   const _OfflineNotice();

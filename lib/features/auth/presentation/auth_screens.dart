@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../../core/config/env.dart';
 import '../../../core/result/result.dart';
 import '../../../app/theme.dart';
+import '../../../shared/widgets/option_selectors.dart';
 import '../domain/entities/auth_session.dart';
 import 'providers/auth_provider.dart';
 import '../../home/presentation/home_screen.dart' show homeConnectivityProvider;
@@ -198,8 +199,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             consentVersion: AppConfig.privacyPolicyVersion));
     if (!mounted) return;
     result.map(
-        ok: (_) =>
-            context.push('/otp-verify', extra: _normalizePhone(_phone.text)),
+        ok: (_) => context.push('/otp-verify?providerSetup=true',
+            extra: _normalizePhone(_phone.text)),
         err: (err) => setState(() => _error = _errorText(err.error.code)));
     setState(() => _busy = false);
   }
@@ -225,18 +226,28 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           const SizedBox(height: 14),
           const Text('¿Cómo participarás?'),
           const SizedBox(height: 8),
-          Wrap(spacing: 8, children: [
-            for (final role in {
-              'producer': 'Productor',
-              'supplier': 'Proveedor',
-              'buyer': 'Comprador',
-              'carrier': 'Transportador'
-            }.entries)
-              ChoiceChip(
-                  label: Text(role.value),
-                  selected: _role == role.key,
-                  onSelected: (_) => setState(() => _role = role.key))
-          ]),
+          OptionCircleSelector<String>(
+            value: _role,
+            options: const [
+              SelectorOption(
+                  value: 'producer',
+                  label: 'Productor',
+                  icon: Icons.agriculture_outlined),
+              SelectorOption(
+                  value: 'supplier',
+                  label: 'Proveedor',
+                  icon: Icons.storefront_outlined),
+              SelectorOption(
+                  value: 'buyer',
+                  label: 'Comprador',
+                  icon: Icons.shopping_bag_outlined),
+              SelectorOption(
+                  value: 'carrier',
+                  label: 'Transportador',
+                  icon: Icons.local_shipping_outlined),
+            ],
+            onChanged: (value) => setState(() => _role = value),
+          ),
           CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               value: _consent,
@@ -277,8 +288,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 }
 
 class OtpVerifyScreen extends ConsumerStatefulWidget {
-  const OtpVerifyScreen({required this.phone, super.key});
+  const OtpVerifyScreen({
+    required this.phone,
+    this.providerSetup = false,
+    super.key,
+  });
   final String phone;
+  final bool providerSetup;
   @override
   ConsumerState<OtpVerifyScreen> createState() => _OtpVerifyScreenState();
 }
@@ -309,7 +325,11 @@ class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
         _code.clear();
       });
     } else {
-      context.go('/');
+      final role = state.valueOrNull?.user.role;
+      context.go(
+          widget.providerSetup && (role == 'producer' || role == 'supplier')
+              ? '/perfil/proveedor?onboarding=true'
+              : '/');
     }
     setState(() => _busy = false);
   }
@@ -470,6 +490,8 @@ String _errorText(String code) => switch (code) {
         'Demasiados intentos. Solicita un código nuevo.',
       'rate_limited' => 'Demasiadas solicitudes. Intenta nuevamente más tarde.',
       'invalid_session' => 'Sesión expirada. Inicia sesión nuevamente.',
+      'access_denied' =>
+        'Este dispositivo está vinculado a otra cuenta. Usa otro dispositivo o inicia sesión con esa cuenta.',
       'network_error' =>
         'No hay conexión con el servicio. Intenta cuando tengas señal.',
       _ => 'No pudimos completar la solicitud. Intenta de nuevo.'

@@ -188,4 +188,45 @@ class AppTheme {
       ),
     );
   }
+
+  static ThemeData get dark {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: primary,
+      brightness: Brightness.dark,
+      primary: const Color(0xFF8BCB8E),
+      onPrimary: const Color(0xFF102B13),
+      secondary: const Color(0xFFD7B6A8),
+      surface: const Color(0xFF18211A),
+      onSurface: const Color(0xFFE8EFE8),
+      error: const Color(0xFFFFB4AB),
+    );
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: scheme,
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: const Color(0xFF101712),
+      fontFamily: 'Inter',
+      cardTheme: CardThemeData(
+        color: scheme.surface,
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusSurface),
+          side: BorderSide(color: scheme.outlineVariant),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: scheme.surface,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(radiusControl)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(radiusControl),
+          borderSide: BorderSide(color: scheme.outlineVariant),
+        ),
+      ),
+    );
+  }
 }

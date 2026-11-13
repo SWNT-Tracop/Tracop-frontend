@@ -19,6 +19,7 @@ class ResponsiveShell extends ConsumerWidget {
   ];
 
   int get _selectedIndex {
+    if (currentLocation.startsWith('/lots/')) return 1;
     final index = _destinations.indexWhere((item) =>
         currentLocation == item.path ||
         currentLocation.startsWith('${item.path}/'));
