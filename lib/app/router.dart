@@ -1,7 +1,9 @@
 import 'package:go_router/go_router.dart';
 import '../features/home/presentation/home_screen.dart';
 import 'package:flutter/material.dart';
+import 'not_found_screen.dart';
 import 'responsive_shell.dart';
+import 'motion.dart';
 import 'theme.dart';
 import '../features/auth/presentation/auth_screens.dart';
 import '../features/auth/presentation/profile_screen.dart';
@@ -12,11 +14,12 @@ import '../features/catalog/presentation/lot_detail_screen.dart';
 import '../features/catalog/presentation/lot_form_screen.dart';
 import '../features/catalog/presentation/my_lots_screen.dart';
 import '../core/config/env.dart';
+import '../core/i18n/strings.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 final router = GoRouter(
   initialLocation: '/splash',
-  errorBuilder: (context, state) => const LoginScreen(),
+  errorBuilder: (context, state) => const NotFoundScreen(),
   routes: [
     GoRoute(path: '/splash', builder: (context, state) => const SplashScreen()),
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
@@ -134,11 +137,11 @@ class AuthenticatedShell extends ConsumerWidget {
               children: [
                 Container(
                   width: double.infinity,
-                  color: const Color(0xFFFFF3CD),
+                  color: AppTheme.warningSurface,
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   child: const Text(
-                    'Modo de prueba: entraste sin sesión. Las funciones que requieren el servidor pueden fallar.',
+                    SessionStrings.testMode,
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -158,8 +161,8 @@ Page<void> _routePage(BuildContext context, GoRouterState state, Widget child) {
   return CustomTransitionPage<void>(
     key: state.pageKey,
     child: child,
-    transitionDuration: const Duration(milliseconds: 240),
-    reverseTransitionDuration: const Duration(milliseconds: 240),
+    transitionDuration: AppMotion.fast,
+    reverseTransitionDuration: AppMotion.fast,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       return AnimatedBuilder(
         animation: Listenable.merge([animation, secondaryAnimation]),
@@ -213,40 +216,4 @@ Page<void> _routePage(BuildContext context, GoRouterState state, Widget child) {
 double _transitionInterval(double value, double begin, double end) {
   final progress = ((value - begin) / (end - begin)).clamp(0.0, 1.0);
   return Curves.easeOutCubic.transform(progress);
-}
-
-class RoutePlaceholder extends StatelessWidget {
-  const RoutePlaceholder({required this.title, super.key});
-  final String title;
-
-  @override
-  Widget build(BuildContext context) => Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.agriculture_outlined,
-                    size: 48, color: AppTheme.primary),
-                const SizedBox(height: 20),
-                Text(title, style: Theme.of(context).textTheme.headlineMedium),
-                const SizedBox(height: 12),
-                Text(
-                  'Esta sección todavía no está disponible. Puedes volver al inicio.',
-                  style: Theme.of(context).textTheme.bodyLarge,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                OutlinedButton.icon(
-                  onPressed: () => context.go('/'),
-                  icon: const Icon(Icons.home_outlined),
-                  label: const Text('Volver al inicio'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
 }

@@ -1,11 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/config/catalog_config.dart';
+import '../../../core/i18n/formats.dart';
+import '../../../core/i18n/strings.dart';
 import '../../../shared/widgets/option_selectors.dart';
 import '../../../shared/widgets/lot_interaction_widgets.dart';
 import '../../auth/presentation/providers/auth_provider.dart';
@@ -13,7 +16,10 @@ import '../../home/presentation/home_screen.dart';
 import '../domain/entities/category.dart';
 import '../domain/entities/lot.dart' hide Category, Product;
 import '../domain/entities/product.dart';
+import '../domain/lot_quantity.dart';
 import 'providers/catalog_provider.dart';
+
+typedef _S = CatalogStrings;
 
 final searchCategoriesProvider = FutureProvider<List<Category>>((ref) async {
   final result = await ref.read(catalogRepositoryProvider).getCategories();
@@ -25,6 +31,12 @@ final searchProductsProvider = FutureProvider<List<Product>>((ref) async {
   return result.map(
       ok: (value) => value.value, err: (failure) => throw failure);
 });
+
+// Rango de precio invertido (minimo mayor que maximo).
+bool _invalidPriceRange(String min, String max) {
+  final low = int.tryParse(min), high = int.tryParse(max);
+  return low != null && high != null && low > high;
+}
 
 class CatalogSearchScreen extends ConsumerStatefulWidget {
   const CatalogSearchScreen({super.key});
@@ -54,6 +66,7 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
   bool _hasError = false;
   bool _hasMore = false;
   bool _initialized = false;
+  bool _openingFilters = false;
   String? _role;
   DateTime? _updatedAt;
   bool _servedFromCache = false;
@@ -98,7 +111,7 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
       _availableUntil != null;
 
   Map<String, dynamic> get _query => {
-        'limit': 20,
+        'limit': CatalogConfig.pageSize,
         'sort': _sort,
         if (_searchController.text.trim().isNotEmpty)
           'q': _searchController.text.trim(),
@@ -116,8 +129,7 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
 
   void _scheduleSearch() {
     _debounce?.cancel();
-    _debounce =
-        Timer(const Duration(milliseconds: 350), () => _load(reset: true));
+    _debounce = Timer(CatalogConfig.searchDebounce, () => _load(reset: true));
   }
 
   void _syncUrl() {
@@ -151,7 +163,7 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
         ref.read(authProvider).valueOrNull?.user.role;
     final result = await ref.read(catalogRepositoryProvider).searchLots(
           cursor: reset ? null : _cursor,
-          limit: 20,
+          limit: CatalogConfig.pageSize,
           categoryId: _categoryId,
           productId: _productId,
           q: _searchController.text.trim().isEmpty
@@ -189,6 +201,8 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
   }
 
   Future<void> _openFilters({required bool compact}) async {
+    if (_openingFilters) return;
+    setState(() => _openingFilters = true);
     final categories = await ref
         .read(searchCategoriesProvider.future)
         .catchError((_) => <Category>[]);
@@ -196,6 +210,7 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
         .read(searchProductsProvider.future)
         .catchError((_) => <Product>[]);
     if (!mounted) return;
+    setState(() => _openingFilters = false);
     final content = _FilterPanel(
       categories: categories,
       products: products,
@@ -208,8 +223,11 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
       onProduct: (value) => _productId = value,
       onAvailability: (value) {
         _availableFrom = value ? DateTime.now().toUtc() : null;
-        _availableUntil =
-            value ? DateTime.now().add(const Duration(days: 30)).toUtc() : null;
+        _availableUntil = value
+            ? DateTime.now()
+                .add(const Duration(days: CatalogConfig.availableSoonDays))
+                .toUtc()
+            : null;
       },
     );
     if (compact) {
@@ -237,6 +255,12 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
         ),
       );
     }
+    // Si se cerro con el rango invertido, se ordena para no buscar vacio.
+    if (_invalidPriceRange(_minController.text, _maxController.text)) {
+      final min = _minController.text;
+      _minController.text = _maxController.text;
+      _maxController.text = min;
+    }
     if (mounted) _load(reset: true);
   }
 
@@ -247,7 +271,8 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
         _load(reset: true);
       }
     });
-    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final wide =
+        MediaQuery.sizeOf(context).width >= CatalogConfig.wideBreakpoint;
     final reducedMotion = MediaQuery.disableAnimationsOf(context);
     final categories =
         ref.watch(searchCategoriesProvider).valueOrNull ?? const <Category>[];
@@ -264,13 +289,15 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
         ? _pageStarts[_currentPage + 1]
         : _lots.length;
     final visibleLots = _lots.sublist(firstVisible, lastVisible);
+    final chips = _activeChips(categories, products);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1120),
+            constraints:
+                const BoxConstraints(maxWidth: CatalogConfig.maxContentWidth),
             child: CustomScrollView(
               key: const PageStorageKey('catalog-search-scroll'),
               controller: _scrollController,
@@ -282,7 +309,7 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Buscar lotes',
+                          Text(_S.title,
                               style: Theme.of(context)
                                   .textTheme
                                   .headlineMedium
@@ -293,27 +320,34 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
                           Row(children: [
                             Expanded(
                                 child: Semantics(
-                              label: 'Buscar productos o ubicación',
+                              label: _S.searchLabel,
                               child: TextField(
                                 controller: _searchController,
                                 textInputAction: TextInputAction.search,
-                                onChanged: (_) => _scheduleSearch(),
-                                onSubmitted: (_) => _load(reset: true),
+                                onChanged: (_) {
+                                  setState(() {});
+                                  _scheduleSearch();
+                                },
+                                onSubmitted: (_) {
+                                  _debounce?.cancel();
+                                  _load(reset: true);
+                                },
                                 decoration: InputDecoration(
-                                  hintText: 'Producto o ubicación',
+                                  hintText: _S.searchHint,
                                   prefixIcon: const Icon(Icons.search),
                                   suffixIcon: _searchController.text.isEmpty
                                       ? null
                                       : IconButton(
-                                          tooltip: 'Limpiar búsqueda',
+                                          tooltip: _S.clearSearch,
                                           onPressed: () {
+                                            _debounce?.cancel();
                                             _searchController.clear();
                                             _load(reset: true);
                                           },
                                           icon: const Icon(Icons.close),
                                         ),
                                   filled: true,
-                                  fillColor: Colors.white,
+                                  fillColor: AppTheme.white,
                                   border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(16),
                                       borderSide: const BorderSide(
@@ -327,9 +361,19 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
                             )),
                             const SizedBox(width: 8),
                             IconButton.filledTonal(
-                              tooltip: 'Abrir filtros',
-                              onPressed: () => _openFilters(compact: !wide),
-                              icon: const Icon(Icons.tune),
+                              tooltip: _S.openFilters,
+                              onPressed: _openingFilters
+                                  ? null
+                                  : () => _openFilters(compact: !wide),
+                              icon: _openingFilters
+                                  ? const SizedBox.square(
+                                      dimension: 20,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2))
+                                  : Badge(
+                                      isLabelVisible: chips.isNotEmpty,
+                                      label: Text('${chips.length}'),
+                                      child: const Icon(Icons.tune)),
                               style: IconButton.styleFrom(
                                   minimumSize: const Size(52, 52)),
                             ),
@@ -340,7 +384,7 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
                               spacing: 8,
                               runSpacing: 4,
                               children: [
-                                Text('Ordenar:',
+                                Text(_S.sortBy,
                                     style:
                                         Theme.of(context).textTheme.labelLarge),
                                 SegmentedButton<String>(
@@ -348,14 +392,14 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
                                   segments: [
                                     const ButtonSegment(
                                         value: 'recent',
-                                        label: Text('Recientes')),
+                                        label: Text(_S.sortRecent)),
                                     if (isBuyer)
                                       const ButtonSegment(
                                           value: 'price',
-                                          label: Text('Menor precio')),
+                                          label: Text(_S.sortPrice)),
                                     const ButtonSegment(
                                         value: 'availability',
-                                        label: Text('Disponibilidad')),
+                                        label: Text(_S.sortAvailability)),
                                   ],
                                   selected: {_sort},
                                   onSelectionChanged: (value) {
@@ -367,7 +411,7 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
                                   TextButton.icon(
                                     onPressed: _clearFilters,
                                     icon: const Icon(Icons.close, size: 18),
-                                    label: const Text('Limpiar filtros'),
+                                    label: const Text(_S.clearFilters),
                                   ),
                               ]),
                           if (offline || _servedFromCache)
@@ -375,21 +419,14 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
                               updatedAt: _updatedAt,
                               offline: offline,
                             ),
-                          if (_activeChips(categories, products)
-                              .isNotEmpty) ...[
+                          if (chips.isNotEmpty) ...[
                             const SizedBox(height: 6),
-                            Wrap(
-                                spacing: 8,
-                                runSpacing: 4,
-                                children: _activeChips(categories, products)),
+                            Wrap(spacing: 8, runSpacing: 4, children: chips),
                           ],
                           const SizedBox(height: 10),
-                          if (activeRole == null)
-                            const Text(
-                                'No pudimos confirmar tu rol; mostramos la búsqueda general.'),
+                          if (activeRole == null) const Text(_S.unknownRole),
                           if (isCarrier)
-                            const Text(
-                                'Prioriza cantidad y ubicación para planear la recogida.',
+                            const Text(_S.carrierHint,
                                 style: TextStyle(color: AppTheme.mutedText)),
                         ]),
                   ),
@@ -410,7 +447,7 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
                       child: _EmptyState(
                           hasQuery:
                               _searchController.text.isNotEmpty || _hasFilters,
-                          onClear: _clearFilters)),
+                          onClear: _clearAll)),
                 if (_lots.isNotEmpty) ...[
                   SliverPadding(
                     padding: EdgeInsets.fromLTRB(
@@ -418,9 +455,8 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
                     sliver: SliverToBoxAdapter(
                       child: Semantics(
                           liveRegion: true,
-                          label: '${_lots.length} resultados cargados',
-                          child: Text(
-                              '${_lots.length} lotes cargados${_hasMore ? ' · hay más resultados' : ''}',
+                          label: _S.resultsLabel(_lots.length),
+                          child: Text(_S.results(_lots.length, _hasMore),
                               style: Theme.of(context)
                                   .textTheme
                                   .bodyMedium
@@ -436,7 +472,7 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
                                 crossAxisCount: 2,
                                 mainAxisSpacing: 12,
                                 crossAxisSpacing: 12,
-                                mainAxisExtent: 196),
+                                mainAxisExtent: CatalogConfig.cardExtent),
                         itemCount: visibleLots.length,
                         itemBuilder: (context, index) => _buildCard(
                             context,
@@ -465,6 +501,7 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
                                     pageCount: _pageStarts.length,
                                     currentPage: _currentPage,
                                     hasMore: _hasMore,
+                                    loading: _loadingMore,
                                     onSelect: (page) {
                                       if (page < _pageStarts.length) {
                                         setState(() => _currentPage = page);
@@ -481,7 +518,7 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
                                             dimension: 20,
                                             child: CircularProgressIndicator(
                                                 strokeWidth: 2))
-                                        : const Text('Cargar más')))),
+                                        : const Text(_S.loadMore)))),
                 ],
                 const SliverToBoxAdapter(child: SizedBox(height: 24)),
               ],
@@ -500,19 +537,18 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
         .valueOrNull
         ?.where((item) => item.id == lot.productId)
         .firstOrNull;
-    final productName = product?.name ?? 'Producto agropecuario';
+    final productName = product?.name ?? LotStrings.productFallback;
     final location = lot.provider == null
-        ? 'Ubicación no informada'
-        : '${lot.provider!.municipality}, ${lot.provider!.department}';
-    final unitPrice = int.tryParse(lot.unitPrice) ?? 0;
-    final price =
-        NumberFormat.currency(locale: 'es_CO', symbol: r'$ ', decimalDigits: 0)
-            .format(unitPrice);
-    final qty = (int.tryParse(lot.quantityMilli) ?? 0) / 1000;
-    final availability = lot.status == 'published' ? 'Disponible' : lot.status;
+        ? LotStrings.noLocation
+        : LotStrings.location(
+            lot.provider!.municipality, lot.provider!.department);
+    final price = AppFormats.moneyText(lot.unitPrice);
+    final qty =
+        LotStrings.quantity(formatQuantityMilli(lot.quantityMilli), lot.unit);
+    final availability = LotStatusStrings.public(lot.status);
     final card = Card(
       margin: EdgeInsets.zero,
-      color: Colors.white,
+      color: AppTheme.white,
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: const BorderSide(color: AppTheme.outline)),
@@ -534,12 +570,16 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700, color: AppTheme.ink))),
               if (isBuyer)
-                Text(price,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: AppTheme.forest, fontWeight: FontWeight.w700)),
+                Padding(
+                  // Deja espacio al icono de voltear.
+                  padding: const EdgeInsets.only(right: 32),
+                  child: Text(price,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: AppTheme.forest, fontWeight: FontWeight.w700)),
+                ),
             ]),
             const SizedBox(height: 8),
-            Text('$qty ${lot.unit}',
+            Text(qty,
                 style: Theme.of(context)
                     .textTheme
                     .bodyLarge
@@ -551,7 +591,7 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
               const SizedBox(width: 6),
               Expanded(
                   child: Text(
-                      '$availability · hasta ${DateFormat('d MMM', 'es_CO').format(lot.availableUntil.toLocal())}',
+                      '$availability · ${_S.until(AppFormats.dayMonth(lot.availableUntil))}',
                       style: const TextStyle(fontSize: 14)))
             ]),
             const SizedBox(height: 6),
@@ -577,36 +617,41 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
           ])),
     );
     final detailBack = Container(
-      constraints: const BoxConstraints(minHeight: 196),
+      constraints: const BoxConstraints(minHeight: CatalogConfig.cardExtent),
       color: AppTheme.mint,
       padding: const EdgeInsets.all(18),
       child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('$productName · Detalles',
+            Text(LotStrings.detailsTitle(productName),
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: AppTheme.forest, fontWeight: FontWeight.w700)),
             const SizedBox(height: 10),
+            Text(LotStrings.quality(lot.qualityGrade?.isNotEmpty == true
+                ? lot.qualityGrade!
+                : LotStrings.noQuality)),
+            Text('$qty · ${LotStrings.pricePer(price, lot.unit)}'),
             Text(
-                'Calidad: ${lot.qualityGrade?.isNotEmpty == true ? lot.qualityGrade : 'No especificada'}'),
-            Text('$qty ${lot.unit} · $price por ${lot.unit}'),
-            Text(
-                'Disponible hasta ${DateFormat('d MMM y', 'es_CO').format(lot.availableUntil.toLocal())}'),
+                _S.availableUntil(AppFormats.dayMonthYear(lot.availableUntil))),
             const SizedBox(height: 12),
-            Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.tonalIcon(
-                    onPressed: () => context.push('/lots/${lot.id}', extra: {
-                          'from': GoRouterState.of(context).uri.toString()
-                        }),
-                    icon: const Icon(Icons.open_in_new),
-                    label: const Text('Ver lote'))),
+            Row(children: [
+              const Expanded(
+                  child: Text(LotStrings.tapToFlipBack,
+                      style:
+                          TextStyle(fontSize: 12, color: AppTheme.mutedText))),
+              FilledButton.tonalIcon(
+                  onPressed: () => context.push('/lots/${lot.id}', extra: {
+                        'from': GoRouterState.of(context).uri.toString()
+                      }),
+                  icon: const Icon(Icons.open_in_new),
+                  label: const Text(LotStrings.viewLot)),
+            ]),
           ]),
     );
     final flipCard = FlipLotCard(
         front: card, back: detailBack, initiallyAnimate: index == 0);
-    if (reducedMotion || index >= 8) return flipCard;
+    if (reducedMotion || index >= CatalogConfig.staggerLimit) return flipCard;
     return _StaggeredLotCard(
         key: ValueKey('lot-entry-${lot.id}'), index: index, child: flipCard);
   }
@@ -632,10 +677,15 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
             _load(reset: true);
           }));
     }
-    if (_minController.text.isNotEmpty || _maxController.text.isNotEmpty) {
+    final min = int.tryParse(_minController.text);
+    final max = int.tryParse(_maxController.text);
+    if (min != null || max != null) {
       chips.add(_FilterChip(
-          label:
-              'Precio ${_minController.text.isEmpty ? '0' : _minController.text}–${_maxController.text.isEmpty ? '∞' : _maxController.text}',
+          label: min != null && max != null
+              ? _S.priceChip(AppFormats.money(min), AppFormats.money(max))
+              : min != null
+                  ? _S.priceChipFrom(AppFormats.money(min))
+                  : _S.priceChipUpTo(AppFormats.money(max!)),
           onDeleted: () {
             _minController.clear();
             _maxController.clear();
@@ -644,7 +694,7 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
     }
     if (_availableFrom != null) {
       chips.add(_FilterChip(
-          label: 'Disponible próximamente',
+          label: _S.availableChip,
           onDeleted: () {
             _availableFrom = null;
             _availableUntil = null;
@@ -665,6 +715,13 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
     });
     _load(reset: true);
   }
+
+  // Desde el estado vacio tambien se limpia el texto buscado.
+  void _clearAll() {
+    _debounce?.cancel();
+    _searchController.clear();
+    _clearFilters();
+  }
 }
 
 class _StaggeredLotCard extends StatefulWidget {
@@ -683,7 +740,7 @@ class _StaggeredLotCardState extends State<_StaggeredLotCard> {
   @override
   void initState() {
     super.initState();
-    Future<void>.delayed(Duration(milliseconds: widget.index * 35), () {
+    Future<void>.delayed(CatalogConfig.staggerStep * widget.index, () {
       if (mounted) setState(() => _visible = true);
     });
   }
@@ -691,11 +748,11 @@ class _StaggeredLotCardState extends State<_StaggeredLotCard> {
   @override
   Widget build(BuildContext context) => AnimatedOpacity(
         opacity: _visible ? 1 : 0,
-        duration: const Duration(milliseconds: 220),
+        duration: CatalogConfig.staggerDuration,
         curve: Curves.easeOutCubic,
         child: AnimatedSlide(
           offset: _visible ? Offset.zero : const Offset(0, .035),
-          duration: const Duration(milliseconds: 220),
+          duration: CatalogConfig.staggerDuration,
           curve: Curves.easeOutCubic,
           child: widget.child,
         ),
@@ -735,70 +792,83 @@ class _FilterPanelState extends State<_FilterPanel> {
   late bool available = widget.available;
 
   @override
-  Widget build(BuildContext context) => Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Filtros', style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 16),
-            SearchableSheetSelector<String>(
-                label: 'Categoría',
-                value: category,
-                clearLabel: 'Todas las categorías',
-                options: widget.categories
-                    .map((item) =>
-                        SelectorOption(value: item.id, label: item.name))
-                    .toList(growable: false),
-                onChanged: (value) => setState(() {
-                      category = value;
-                      product = null;
-                      widget.onCategory(value);
-                      widget.onProduct(null);
-                    })),
-            const SizedBox(height: 12),
-            SearchableSheetSelector<String>(
-                label: 'Producto',
-                value: product,
-                clearLabel: 'Todos los productos',
-                options: widget.products
-                    .where((item) =>
-                        category == null || item.categoryId == category)
-                    .map((item) =>
-                        SelectorOption(value: item.id, label: item.name))
-                    .toList(growable: false),
-                onChanged: (value) => setState(() {
-                      product = value;
-                      widget.onProduct(value);
-                    })),
-            const SizedBox(height: 12),
-            Row(children: [
-              Expanded(
-                  child: TextField(
-                      controller: widget.minController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                          labelText: 'Precio mínimo (COP)'))),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: TextField(
-                      controller: widget.maxController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                          labelText: 'Precio máximo (COP)')))
-            ]),
-            SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Disponible en los próximos 30 días'),
-                value: available,
-                onChanged: (value) => setState(() {
-                      available = value;
-                      widget.onAvailability(value);
-                    })),
-            const SizedBox(height: 12),
-            FilledButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Ver resultados')),
-          ]);
+  Widget build(BuildContext context) {
+    final invalidRange = _invalidPriceRange(
+        widget.minController.text, widget.maxController.text);
+    return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(_S.filters, style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 16),
+          SearchableSheetSelector<String>(
+              label: _S.category,
+              value: category,
+              clearLabel: _S.allCategories,
+              options: widget.categories
+                  .map((item) =>
+                      SelectorOption(value: item.id, label: item.name))
+                  .toList(growable: false),
+              onChanged: (value) => setState(() {
+                    category = value;
+                    product = null;
+                    widget.onCategory(value);
+                    widget.onProduct(null);
+                  })),
+          const SizedBox(height: 12),
+          SearchableSheetSelector<String>(
+              label: _S.product,
+              value: product,
+              clearLabel: _S.allProducts,
+              options: widget.products
+                  .where(
+                      (item) => category == null || item.categoryId == category)
+                  .map((item) =>
+                      SelectorOption(value: item.id, label: item.name))
+                  .toList(growable: false),
+              onChanged: (value) => setState(() {
+                    product = value;
+                    widget.onProduct(value);
+                  })),
+          const SizedBox(height: 12),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: _priceField(widget.minController, _S.minPrice)),
+            const SizedBox(width: 12),
+            Expanded(child: _priceField(widget.maxController, _S.maxPrice)),
+          ]),
+          if (invalidRange)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Semantics(
+                liveRegion: true,
+                child: Text(_S.priceRangeError,
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error)),
+              ),
+            ),
+          SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text(_S.availableSoon),
+              value: available,
+              onChanged: (value) => setState(() {
+                    available = value;
+                    widget.onAvailability(value);
+                  })),
+          const SizedBox(height: 12),
+          FilledButton(
+              onPressed:
+                  invalidRange ? null : () => Navigator.of(context).pop(),
+              child: const Text(_S.showResults)),
+        ]);
+  }
+
+  Widget _priceField(TextEditingController controller, String label) =>
+      TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(labelText: label, prefixText: r'$ '));
 }
 
 class _FilterChip extends StatelessWidget {
@@ -809,7 +879,7 @@ class _FilterChip extends StatelessWidget {
   Widget build(BuildContext context) => InputChip(
       label: Text(label),
       onDeleted: onDeleted,
-      deleteButtonTooltipMessage: 'Quitar filtro $label');
+      deleteButtonTooltipMessage: _S.removeFilter(label));
 }
 
 class _OfflineCatalogNotice extends StatelessWidget {
@@ -818,23 +888,26 @@ class _OfflineCatalogNotice extends StatelessWidget {
   final bool offline;
   @override
   Widget build(BuildContext context) {
-    final prefix = offline ? 'Sin conexión.' : 'No pudimos actualizar.';
+    final prefix = offline ? _S.offlinePrefix : _S.staleCachePrefix;
     final message = updatedAt == null
-        ? '$prefix No hay resultados guardados para esta búsqueda.'
-        : '$prefix Última actualización: ${DateFormat('d MMM, HH:mm', 'es_CO').format(updatedAt!.toLocal())}';
+        ? '$prefix ${_S.noCachedResults}'
+        : '$prefix ${_S.lastUpdate(AppFormats.dayMonthTime(updatedAt!))}';
     return Semantics(
       liveRegion: true,
       child: Container(
         margin: const EdgeInsets.only(top: 12),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF3CD),
+          color: AppTheme.warningSurface,
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(children: [
-          const Icon(Icons.cloud_off_outlined, size: 19),
+          const Icon(Icons.cloud_off_outlined,
+              size: 19, color: AppTheme.warningIcon),
           const SizedBox(width: 8),
-          Expanded(child: Text(message)),
+          Expanded(
+              child: Text(message,
+                  style: const TextStyle(color: AppTheme.warningText))),
         ]),
       ),
     );
@@ -848,7 +921,7 @@ class _LotSkeleton extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       height: 168,
       decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppTheme.white,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: AppTheme.outline)),
       child: const Padding(
@@ -885,12 +958,10 @@ class _ErrorState extends StatelessWidget {
             const Icon(Icons.wifi_off_outlined,
                 size: 42, color: AppTheme.mutedText),
             const SizedBox(height: 12),
-            const Text(
-                'No pudimos cargar los lotes. Revisa tu conexión e inténtalo de nuevo.',
-                textAlign: TextAlign.center),
+            const Text(_S.loadError, textAlign: TextAlign.center),
             const SizedBox(height: 12),
             FilledButton.tonal(
-                onPressed: onRetry, child: const Text('Reintentar'))
+                onPressed: onRetry, child: const Text(CommonStrings.retry))
           ])));
 }
 
@@ -905,17 +976,13 @@ class _EmptyState extends StatelessWidget {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Icon(Icons.eco_outlined, size: 48, color: AppTheme.primary),
             const SizedBox(height: 12),
-            Text(
-                hasQuery
-                    ? 'No encontramos lotes con esos criterios.'
-                    : 'Todavía no hay lotes disponibles.',
+            Text(hasQuery ? _S.noMatches : _S.noLots,
                 style: Theme.of(context).textTheme.titleMedium,
                 textAlign: TextAlign.center),
             if (hasQuery) ...[
               const SizedBox(height: 12),
               OutlinedButton(
-                  onPressed: onClear,
-                  child: const Text('Quitar filtros y buscar de nuevo'))
+                  onPressed: onClear, child: const Text(_S.clearAndSearch))
             ]
           ])));
 }
@@ -925,11 +992,13 @@ class _WebPages extends StatelessWidget {
     required this.pageCount,
     required this.currentPage,
     required this.hasMore,
+    required this.loading,
     required this.onSelect,
   });
   final int pageCount;
   final int currentPage;
   final bool hasMore;
+  final bool loading;
   final ValueChanged<int> onSelect;
   @override
   Widget build(BuildContext context) {
@@ -943,16 +1012,22 @@ class _WebPages extends StatelessWidget {
             page == currentPage
                 ? Semantics(
                     selected: true,
-                    label: 'Página ${page + 1}',
+                    label: _S.page(page + 1),
                     child: CircleAvatar(
                       backgroundColor: AppTheme.primary,
-                      foregroundColor: Colors.white,
+                      foregroundColor: AppTheme.white,
                       child: Text('${page + 1}'),
                     ),
                   )
                 : OutlinedButton(
-                    onPressed: () => onSelect(page),
-                    child: Text('${page + 1}'),
+                    onPressed: loading && page >= pageCount
+                        ? null
+                        : () => onSelect(page),
+                    child: loading && page >= pageCount
+                        ? const SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : Text('${page + 1}'),
                   ),
         ],
       ),

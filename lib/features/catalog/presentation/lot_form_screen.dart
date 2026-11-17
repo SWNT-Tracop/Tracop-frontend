@@ -8,7 +8,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../app/back_guard.dart';
+import '../../../app/motion.dart';
 import '../../../app/theme.dart';
+import '../../../core/i18n/strings.dart';
 import '../../../shared/widgets/option_selectors.dart';
 import '../../../core/result/result.dart';
 import '../../auth/presentation/providers/auth_provider.dart';
@@ -59,9 +62,28 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
   final List<_PendingLotPhoto> _pendingPhotos = [];
   final _imagePicker = ImagePicker();
   Map<String, String> _fieldErrors = {};
+  String? _baseline;
+  (double, double)? _profilePoint;
+  bool _usingProfilePoint = false;
 
   bool get isEditing => widget.isEditing || _draftLotId != null;
   String? get _activeLotId => widget.lotId ?? _draftLotId;
+
+  // Huella de lo escrito para saber si hay cambios sin guardar.
+  String get _signature => [
+        _productId,
+        _quantity.text,
+        _price.text,
+        _quality.text,
+        _availableFrom,
+        _availableUntil,
+        _lat.text,
+        _lng.text,
+        _pendingPhotos.length,
+      ].join('|');
+
+  bool get _dirty =>
+      !_submitting && _baseline != null && _signature != _baseline;
 
   @override
   void initState() {
@@ -69,10 +91,54 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
     final today = dateOnly(DateTime.now());
     _availableFrom = today;
     _availableUntil = today.add(const Duration(days: 7));
+    _baseline = _signature;
+    backGuard.value = _allowLeave;
+    _loadProfilePoint();
+  }
+
+  Future<bool> _allowLeave() async => !_dirty || await _confirmLeave();
+
+  // El punto del perfil evita escribir coordenadas a mano en cada lote.
+  Future<void> _loadProfilePoint() async {
+    try {
+      final result =
+          await ref.read(authRepositoryProvider).getStoredProviderProfile();
+      final profile = result.map(ok: (ok) => ok.value, err: (_) => null);
+      if (profile == null || !mounted) return;
+      setState(() {
+        _profilePoint = (profile.lat, profile.lng);
+        final pristine = _signature == _baseline;
+        if (widget.lotId == null && _lat.text.isEmpty && _lng.text.isEmpty) {
+          _applyProfilePoint();
+          if (pristine) _baseline = _signature;
+        }
+      });
+    } catch (_) {
+      // Sin perfil guardado se mantiene el ingreso manual.
+    }
+  }
+
+  void _applyProfilePoint() {
+    final point = _profilePoint;
+    if (point == null) return;
+    _lat.text = '${point.$1}';
+    _lng.text = '${point.$2}';
+    _usingProfilePoint = true;
+    _fieldErrors.remove('latitude');
+    _fieldErrors.remove('longitude');
+    if (_fieldErrors.isEmpty) _formError = null;
+  }
+
+  bool get _matchesProfilePoint {
+    final point = _profilePoint;
+    return point != null &&
+        parseCoordinate(_lat.text) == point.$1 &&
+        parseCoordinate(_lng.text) == point.$2;
   }
 
   @override
   void dispose() {
+    if (backGuard.value == _allowLeave) backGuard.value = null;
     _quantity.dispose();
     _price.dispose();
     _quality.dispose();
@@ -94,6 +160,8 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
     _lat.text = lot.locationLat?.toString() ?? '';
     _lng.text = lot.locationLng?.toString() ?? '';
     _photos = lot.photos;
+    _usingProfilePoint = false;
+    _baseline = _signature;
   }
 
   Future<void> _pickDate({required bool from}) async {
@@ -343,12 +411,12 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
     final confirmation = SnackBar(
       content: Text(message),
       backgroundColor:
-          publishFailure != null ? const Color(0xFFB3261E) : AppTheme.forest,
-      duration: const Duration(seconds: 5),
+          publishFailure != null ? AppTheme.dangerStrong : AppTheme.forest,
+      duration: AppMotion.snackBar,
       behavior: SnackBarBehavior.floating,
       action: publishFailure?.code == 'profile_required'
           ? SnackBarAction(
-              label: 'Completar perfil',
+              label: LotFormStrings.completeProfile,
               textColor: Colors.white,
               onPressed: () => router.go('/perfil/proveedor'),
             )
@@ -629,7 +697,7 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
               liveRegion: true,
               child: Text(
                 _photoError!,
-                style: const TextStyle(color: Color(0xFFB3261E)),
+                style: const TextStyle(color: AppTheme.dangerStrong),
               ),
             ),
           ],
@@ -691,12 +759,41 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
     });
   }
 
-  void _back() {
+  void _leave() {
     if (context.canPop()) {
       context.pop();
     } else {
       context.go('/lotes');
     }
+  }
+
+  Future<void> _back() async {
+    if (_dirty && !await _confirmLeave()) return;
+    if (mounted) _leave();
+  }
+
+  Future<bool> _confirmLeave() async {
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(LotFormStrings.leaveTitle),
+        content: const Text(LotFormStrings.leaveBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text(LotFormStrings.keepEditing),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style:
+                FilledButton.styleFrom(backgroundColor: AppTheme.dangerStrong),
+            child: const Text(LotFormStrings.leave),
+          ),
+        ],
+      ),
+    );
+    if (leave == true) _baseline = _signature;
+    return leave == true;
   }
 
   @override
@@ -754,9 +851,20 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
       );
     }
 
+    // Atras del sistema pide confirmar si hay cambios sin guardar.
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (!didPop && await _confirmLeave() && mounted) _leave();
+      },
+      child: _buildForm(products, isSeller, offline),
+    );
+  }
+
+  Widget _buildForm(
+      AsyncValue<List<Product>> products, bool isSeller, bool offline) {
     final wide = MediaQuery.sizeOf(context).width >= 760;
     final estimatedSubtotal = _estimatedSubtotal();
-
     return _FormScaffold(
       title: isEditing ? 'Editar lote' : 'Nuevo lote',
       onBack: _back,
@@ -962,41 +1070,38 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
               title: 'Ubicación',
               subtitle:
                   'Coordenadas del punto de recogida. Deben estar dentro de Colombia.',
-              child: _ResponsiveRow(
-                wide: wide,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  TextField(
-                    controller: _lat,
-                    enabled: !_submitting,
-                    keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true, signed: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,-]')),
-                    ],
-                    onChanged: (_) =>
-                        _clearFieldErrors(['latitude', 'longitude']),
-                    decoration: InputDecoration(
-                      labelText: 'Latitud',
-                      hintText: '5.5353',
-                      errorText: _fieldErrors['latitude'],
+                  if (_usingProfilePoint && _matchesProfilePoint) ...[
+                    Row(children: [
+                      const Icon(Icons.place_outlined,
+                          size: 18, color: AppTheme.forest),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(LotFormStrings.profilePointUsed,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: AppTheme.forest)),
+                      ),
+                    ]),
+                    const SizedBox(height: 12),
+                  ],
+                  if (_profilePoint != null && !_matchesProfilePoint) ...[
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: _submitting
+                            ? null
+                            : () => setState(_applyProfilePoint),
+                        icon: const Icon(Icons.my_location_outlined),
+                        label: const Text(LotFormStrings.useProfilePoint),
+                      ),
                     ),
-                  ),
-                  TextField(
-                    controller: _lng,
-                    enabled: !_submitting,
-                    keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true, signed: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,-]')),
-                    ],
-                    onChanged: (_) =>
-                        _clearFieldErrors(['latitude', 'longitude']),
-                    decoration: InputDecoration(
-                      labelText: 'Longitud',
-                      hintText: '-73.3678',
-                      errorText: _fieldErrors['longitude'],
-                    ),
-                  ),
+                    const SizedBox(height: 8),
+                  ],
+                  _locationFields(wide),
                 ],
               ),
             ),
@@ -1022,6 +1127,42 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
       ),
     );
   }
+
+  Widget _locationFields(bool wide) => _ResponsiveRow(
+        wide: wide,
+        children: [
+          TextField(
+            controller: _lat,
+            enabled: !_submitting,
+            keyboardType: const TextInputType.numberWithOptions(
+                decimal: true, signed: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9.,-]')),
+            ],
+            onChanged: (_) => _clearFieldErrors(['latitude', 'longitude']),
+            decoration: InputDecoration(
+              labelText: 'Latitud',
+              hintText: '5.5353',
+              errorText: _fieldErrors['latitude'],
+            ),
+          ),
+          TextField(
+            controller: _lng,
+            enabled: !_submitting,
+            keyboardType: const TextInputType.numberWithOptions(
+                decimal: true, signed: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9.,-]')),
+            ],
+            onChanged: (_) => _clearFieldErrors(['latitude', 'longitude']),
+            decoration: InputDecoration(
+              labelText: 'Longitud',
+              hintText: '-73.3678',
+              errorText: _fieldErrors['longitude'],
+            ),
+          ),
+        ],
+      );
 
   int? _estimatedSubtotal() {
     final quantity = parseQuantityMilli(_quantity.text);
@@ -1134,7 +1275,7 @@ class _SectionCard extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
-            color: highlighted ? const Color(0xFFB3261E) : AppTheme.outline,
+            color: highlighted ? AppTheme.dangerStrong : AppTheme.outline,
             width: highlighted ? 1.6 : 1,
           ),
         ),
@@ -1236,7 +1377,7 @@ class _PhotoTile extends StatelessWidget {
                   tooltip: 'Quitar foto',
                   onPressed: onRemove,
                   icon: const Icon(Icons.delete_outline_rounded,
-                      size: 20, color: Color(0xFFB3261E)),
+                      size: 20, color: AppTheme.dangerStrong),
                 ),
               ],
             ),
@@ -1349,7 +1490,7 @@ class _ProductField extends StatelessWidget {
             'No hay productos disponibles en el catálogo todavía.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: errorMessage != null
-                      ? const Color(0xFFB3261E)
+                      ? AppTheme.dangerStrong
                       : AppTheme.mutedText,
                 ),
           ),
@@ -1542,7 +1683,7 @@ class _CreateProductSheetState extends ConsumerState<_CreateProductSheet> {
                 Semantics(
                   liveRegion: true,
                   child: Text(_error!,
-                      style: const TextStyle(color: Color(0xFFB3261E))),
+                      style: const TextStyle(color: AppTheme.dangerStrong)),
                 ),
               ],
               const SizedBox(height: 18),
@@ -1710,19 +1851,19 @@ class _OfflineNotice extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF3CD),
+          color: AppTheme.warningSurface,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
           children: [
             const Icon(Icons.cloud_off_outlined,
-                color: Color(0xFF704E00), size: 20),
+                color: AppTheme.warningIcon, size: 20),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 'Sin conexión. Puedes preparar los datos, pero guardar requiere señal.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF553B00),
+                      color: AppTheme.warningText,
                       fontSize: 14,
                     ),
               ),
@@ -1743,19 +1884,19 @@ class _FormError extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: const Color(0xFFFDECEA),
+            color: AppTheme.dangerSurface,
             borderRadius: BorderRadius.circular(16),
           ),
           child: Row(
             children: [
               const Icon(Icons.error_outline,
-                  color: Color(0xFFB3261E), size: 20),
+                  color: AppTheme.dangerStrong, size: 20),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   message,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF7F1D1D),
+                        color: AppTheme.dangerText,
                         fontSize: 14,
                       ),
                 ),

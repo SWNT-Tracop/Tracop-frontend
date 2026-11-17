@@ -7,7 +7,7 @@ import 'package:tracop_mobile/core/result/result.dart';
 import 'package:tracop_mobile/features/home/presentation/home_screen.dart';
 import 'package:tracop_mobile/features/auth/domain/repository/auth_repository.dart';
 import 'package:tracop_mobile/features/auth/domain/entities/auth_session.dart'
-    show UpdateMeRequest;
+    show UpdateMeRequest, UpsertProviderProfileRequest;
 import 'package:tracop_mobile/features/auth/domain/entities/user.dart';
 import 'package:tracop_mobile/features/auth/presentation/auth_screens.dart'
     show RegisterScreen;
@@ -414,6 +414,10 @@ class _ProfileAuthRepository implements AuthRepository {
 
   @override
   Future<Result<User?, DomainFailure>> getStoredUser() async => Ok(user);
+
+  @override
+  Future<Result<UpsertProviderProfileRequest?, DomainFailure>>
+      getStoredProviderProfile() async => const Ok(null);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

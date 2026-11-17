@@ -38,7 +38,9 @@ void main() {
     expect(find.text('Ubicación de recogida'), findsNothing);
     expect(find.text('Precio por kg'), findsNothing); // Buyer price leads.
     expect(find.textContaining('3.000'), findsOneWidget);
-    await tester.tap(find.byTooltip('Volver a resultados'));
+    expect(find.text('12 kg'), findsOneWidget);
+    expect(find.text('Disponible'), findsOneWidget);
+    await tester.tap(find.byTooltip('Volver'));
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.flip_rounded).first);
     await tester.pumpAndSettle();
@@ -58,7 +60,7 @@ void main() {
 
     expect(find.text('Tomate chonto'), findsOneWidget);
     expect(find.text('Ordenar:'), findsOneWidget);
-    expect(find.textContaining('lotes cargados'), findsOneWidget);
+    expect(find.text('1 lote cargado'), findsOneWidget);
   });
 
   testWidgets('buyer search debounces text and sends supported filters',
@@ -88,6 +90,39 @@ void main() {
     await tester.tap(find.text('Ver resultados'));
     await tester.pumpAndSettle();
     expect(repository.lastMinimumPrice, 2500);
+    expect(find.textContaining('Precio desde'), findsOneWidget);
+    expect(find.textContaining('2.500'), findsOneWidget);
+  });
+
+  testWidgets('price filter blocks an inverted range', (tester) async {
+    app_router.router.go('/');
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = _CatalogRepository();
+    await tester.pumpWidget(_testApp(repository));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Buscar lotes'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Abrir filtros'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Precio mínimo (COP)'), '9000');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Precio máximo (COP)'), '1000');
+    await tester.pump();
+    expect(find.text('El mínimo no puede ser mayor que el máximo.'),
+        findsOneWidget);
+    final button = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Ver resultados'));
+    expect(button.onPressed, isNull);
+
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Precio máximo (COP)'), '12000');
+    await tester.pump();
+    await tester.tap(find.text('Ver resultados'));
+    await tester.pumpAndSettle();
+    expect(repository.lastMinimumPrice, 9000);
   });
 
   testWidgets('offline catalog labels cached results and their update time',

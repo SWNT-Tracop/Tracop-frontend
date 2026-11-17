@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../app/motion.dart';
 import '../../app/theme.dart';
+import '../../core/i18n/strings.dart';
 
 class ProfileHeader extends StatelessWidget {
   const ProfileHeader(
@@ -19,7 +21,7 @@ class ProfileHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(children: [
         Semantics(
-            label: 'Avatar de $name',
+            label: ProfileStrings.avatarLabel(name),
             child: CircleAvatar(
                 radius: 38,
                 backgroundColor: AppTheme.mint,
@@ -62,28 +64,29 @@ class ProfileHeader extends StatelessWidget {
         if (onEdit != null)
           IconButton(
               onPressed: onEdit,
-              tooltip: 'Editar nombre',
+              tooltip: ProfileStrings.editName,
               icon: const Icon(Icons.edit_outlined)),
       ]);
 }
 
 class ProfileCompletenessRing extends StatelessWidget {
   const ProfileCompletenessRing(
-      {super.key, required this.progress, required this.label});
+      {super.key,
+      required this.progress,
+      required this.label,
+      required this.hint});
   final double progress;
-  final String label;
+  final String label, hint;
   @override
   Widget build(BuildContext context) => Semantics(
-      label: '$label ${(progress * 100).round()}% completo',
+      label: ProfileStrings.completeness(label, (progress * 100).round()),
       child: Row(children: [
         SizedBox(
             width: 56,
             height: 56,
             child: TweenAnimationBuilder<double>(
                 tween: Tween(end: progress),
-                duration: MediaQuery.disableAnimationsOf(context)
-                    ? Duration.zero
-                    : const Duration(milliseconds: 320),
+                duration: AppMotion.of(context, AppMotion.medium),
                 builder: (context, value, _) => CircularProgressIndicator(
                     value: value,
                     strokeWidth: 6,
@@ -93,13 +96,13 @@ class ProfileCompletenessRing extends StatelessWidget {
         Expanded(
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('$label ${(progress * 100).round()}% completo',
+          Text(ProfileStrings.completeness(label, (progress * 100).round()),
               style: Theme.of(context)
                   .textTheme
                   .titleSmall
                   ?.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          const Text('Completa tu perfil para publicar lotes.')
+          Text(hint)
         ]))
       ]));
 }

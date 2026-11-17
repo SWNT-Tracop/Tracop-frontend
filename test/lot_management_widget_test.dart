@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tracop_mobile/app/app.dart';
 import 'package:tracop_mobile/app/router.dart' as app_router;
 import 'package:tracop_mobile/core/result/result.dart';
+import 'package:tracop_mobile/features/auth/domain/entities/auth_session.dart';
 import 'package:tracop_mobile/features/auth/domain/entities/user.dart';
 import 'package:tracop_mobile/features/auth/domain/repository/auth_repository.dart';
 import 'package:tracop_mobile/features/auth/presentation/providers/auth_provider.dart';
@@ -40,6 +41,100 @@ void main() {
 
     expect(repository.publishCalls, 1);
     expect(find.text('Lote publicado.'), findsOneWidget);
+  });
+
+  testWidgets('my lots explains that publishing needs a connection',
+      (tester) async {
+    app_router.router.go('/lotes');
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = _LotRepository();
+    await tester.pumpWidget(_testApp(repository, connected: false));
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Publicar lote').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Necesitas conexión para hacer este cambio.'),
+        findsOneWidget);
+    expect(
+        find.text('El lote quedará visible para los compradores con la '
+            'información actual.'),
+        findsNothing);
+    expect(repository.publishCalls, 0);
+  });
+
+  testWidgets('lot form asks before leaving with unsaved changes',
+      (tester) async {
+    app_router.router.go('/lotes/nuevo');
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(_testApp(_LotRepository()));
+    await tester.pumpAndSettle();
+
+    // Sin cambios se sale directo.
+    await tester.tap(find.byTooltip('Volver'));
+    await tester.pumpAndSettle();
+    expect(find.text('¿Salir sin guardar?'), findsNothing);
+
+    app_router.router.go('/lotes/nuevo');
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Cantidad'), '12');
+    await tester.pump();
+    await tester.ensureVisible(find.byTooltip('Volver'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Volver'));
+    await tester.pumpAndSettle();
+    expect(find.text('¿Salir sin guardar?'), findsOneWidget);
+    await tester.tap(find.text('Seguir editando'));
+    await tester.pumpAndSettle();
+    expect(find.text('Nuevo lote'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('¿Salir sin guardar?'), findsOneWidget);
+    await tester.tap(find.text('Salir'));
+    await tester.pumpAndSettle();
+    expect(find.text('Fotos del lote'), findsNothing);
+  });
+
+  testWidgets('lot form fills the pickup point from the provider profile',
+      (tester) async {
+    app_router.router.go('/lotes/nuevo');
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(_testApp(_LotRepository(),
+        profile: const UpsertProviderProfileRequest(
+          displayName: 'Finca prueba',
+          municipality: 'Tunja',
+          department: 'Boyacá',
+          lat: 5.5353,
+          lng: -73.3678,
+          description: '',
+        )));
+    await tester.pumpAndSettle();
+
+    final lat = find.widgetWithText(TextField, 'Latitud');
+    await _scrollTo(tester, lat);
+    expect(tester.widget<TextField>(lat).controller!.text, '5.5353');
+    expect(
+        find.textContaining('punto de recogida de tu perfil'), findsOneWidget);
+
+    await tester.enterText(lat, '6.1');
+    await tester.pump();
+    expect(find.text('Usar el punto de recogida de mi perfil'), findsOneWidget);
+    await tester.tap(find.text('Usar el punto de recogida de mi perfil'));
+    await tester.pump();
+    expect(tester.widget<TextField>(lat).controller!.text, '5.5353');
+
+    // Rellenar desde el perfil no cuenta como cambio sin guardar.
+    await tester.ensureVisible(find.byTooltip('Volver'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Volver'));
+    await tester.pumpAndSettle();
+    expect(find.text('¿Salir sin guardar?'), findsNothing);
   });
 
   testWidgets('lot form validates fields and creates a draft', (tester) async {
@@ -204,10 +299,12 @@ Future<void> _scrollTo(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
-Widget _testApp(CatalogRepository repository, {bool connected = true}) =>
+Widget _testApp(CatalogRepository repository,
+        {bool connected = true, UpsertProviderProfileRequest? profile}) =>
     ProviderScope(
       overrides: [
-        authRepositoryProvider.overrideWithValue(_AuthRepository()),
+        authRepositoryProvider
+            .overrideWithValue(_AuthRepository(profile: profile)),
         authProvider.overrideWith((ref) => _ProducerAuthNotifier()),
         catalogRepositoryProvider.overrideWithValue(repository),
         homeUserProvider.overrideWith((ref) async => const User(
@@ -379,6 +476,13 @@ class _ProducerAuthNotifier extends AuthNotifier {
 }
 
 class _AuthRepository implements AuthRepository {
+  _AuthRepository({this.profile});
+  final UpsertProviderProfileRequest? profile;
+
+  @override
+  Future<Result<UpsertProviderProfileRequest?, DomainFailure>>
+      getStoredProviderProfile() async => Ok(profile);
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

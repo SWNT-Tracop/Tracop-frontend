@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:tracop_mobile/core/i18n/strings.dart';
 import 'package:tracop_mobile/core/result/result.dart';
 import 'package:tracop_mobile/features/auth/domain/entities/auth_session.dart';
 import 'package:tracop_mobile/features/auth/domain/entities/user.dart';
@@ -11,6 +12,7 @@ import 'package:tracop_mobile/features/auth/presentation/providers/auth_provider
 import 'package:tracop_mobile/features/home/presentation/home_screen.dart';
 
 void main() {
+  _backAndEditTests();
   testWidgets('provider profile validates location and saves required fields',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 1200));
@@ -80,6 +82,75 @@ void main() {
     expect(repository.saved?.lat, 5.5353);
     expect(repository.saved?.lng, -73.3);
     expect(find.text('¡Perfil guardado!'), findsOneWidget);
+  });
+}
+
+void _backAndEditTests() {
+  testWidgets('atras del sistema regresa un paso y revisar permite editar',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = _ProviderProfileRepository();
+    final router = GoRouter(
+      initialLocation: '/perfil',
+      routes: [
+        GoRoute(
+          path: '/perfil',
+          builder: (context, state) => const Scaffold(body: Text('Mi cuenta')),
+          routes: [
+            GoRoute(
+              path: 'proveedor',
+              builder: (context, state) => const ProviderProfileScreen(),
+            ),
+          ],
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        authRepositoryProvider.overrideWithValue(repository),
+        authProvider.overrideWith((ref) => _ProducerAuthNotifier(repository)),
+        homeConnectivityProvider
+            .overrideWith((ref) => Stream<bool>.value(true)),
+      ],
+      child: MaterialApp.router(routerConfig: router),
+    ));
+    router.push('/perfil/proveedor');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).first, 'Finca Prueba');
+    await tester.tap(find.text(CommonStrings.next));
+    await tester.pumpAndSettle();
+    expect(find.textContaining(ProviderProfileStrings.steps[1]), findsWidgets);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.textContaining(ProviderProfileStrings.steps[0]), findsWidgets);
+    expect(find.text('Mi cuenta'), findsNothing);
+
+    await tester.tap(find.text(CommonStrings.next));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(ProviderProfileStrings.department));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Boyacá').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(ProviderProfileStrings.municipality));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tunja').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(CommonStrings.next));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(ProviderProfileStrings.useReference));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(CommonStrings.next));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip(ProviderProfileStrings.editSection(
+        ProviderProfileStrings.reviewLocation.toLowerCase())));
+    await tester.pumpAndSettle();
+    expect(find.textContaining(ProviderProfileStrings.steps[1]), findsWidgets);
   });
 }
 

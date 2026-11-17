@@ -6,38 +6,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../app/messenger.dart';
+import '../../../app/motion.dart';
 import '../../../app/theme.dart';
+import '../../../core/config/colombia_locations.dart';
+import '../../../core/i18n/strings.dart';
 import '../../../core/result/result.dart';
 import '../../../shared/widgets/option_selectors.dart';
 import '../../home/presentation/home_screen.dart';
 import '../domain/entities/auth_session.dart';
 import 'providers/auth_provider.dart';
 
-const _departments = <String, List<String>>{
-  'Boyacá': [
-    'Tunja',
-    'Duitama',
-    'Sogamoso',
-    'Chiquinquirá',
-    'Villa de Leyva',
-    'Paipa',
-    'Tibasosa'
-  ],
-  'Cundinamarca': [
-    'Bogotá',
-    'Fusagasugá',
-    'Zipaquirá',
-    'Facatativá',
-    'Chía',
-    'Ubaté',
-    'La Mesa',
-    'Girardot'
-  ],
-  'Antioquia': ['Medellín', 'Rionegro', 'La Ceja', 'Marinilla', 'Apartadó'],
-  'Santander': ['Bucaramanga', 'Floridablanca', 'Piedecuesta', 'San Gil'],
-  'Valle del Cauca': ['Cali', 'Palmira', 'Tuluá', 'Buga'],
-  'Nariño': ['Pasto', 'Ipiales', 'Tumaco'],
-};
+typedef _S = ProviderProfileStrings;
+
+const _storageTimeout = Duration(milliseconds: 250);
+const _minNameLength = 2;
+const _maxNameLength = 100;
+const _maxDescriptionLength = 1000;
+const _lastStep = 3;
+const _producerTypeIcons = [
+  Icons.agriculture_outlined,
+  Icons.groups_outlined,
+  Icons.store_outlined
+];
 
 class ProviderProfileScreen extends ConsumerStatefulWidget {
   const ProviderProfileScreen({this.onboarding = false, super.key});
@@ -57,8 +48,9 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
   bool _loading = true,
       _saving = false,
       _manualCoordinates = false,
-      _success = false;
-  String _producerType = 'Finca familiar';
+      _success = false,
+      _draftRestored = false;
+  String _producerType = _S.producerTypes.first;
   String get _draftKey =>
       'provider_profile_draft_v1_${ref.read(authProvider).valueOrNull?.user.id ?? 'unknown'}';
 
@@ -81,7 +73,7 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
     try {
       final raw = await _storage
           .read(key: _draftKey)
-          .timeout(const Duration(milliseconds: 250), onTimeout: () => null);
+          .timeout(_storageTimeout, onTimeout: () => null);
       if (raw != null) {
         final draft = jsonDecode(raw) as Map<String, dynamic>;
         _displayName.text = draft['displayName'] as String? ?? '';
@@ -91,7 +83,8 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
         _department = draft['department'] as String?;
         _municipality = draft['municipality'] as String?;
         _producerType = draft['producerType'] as String? ?? _producerType;
-        _step = (draft['step'] as int? ?? 0).clamp(0, 3);
+        _step = (draft['step'] as int? ?? 0).clamp(0, _lastStep);
+        _draftRestored = _displayName.text.isNotEmpty || _step > 0;
       }
     } catch (_) {}
     final result =
@@ -127,7 +120,7 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
                 'producerType': _producerType,
                 'step': _step
               }))
-          .timeout(const Duration(milliseconds: 250));
+          .timeout(_storageTimeout);
     } catch (_) {}
   }
 
@@ -137,23 +130,20 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
   }
 
   String? _validateStep() {
-    if (_step == 0 && _displayName.text.trim().length < 2) {
-      return 'Escribe el nombre de tu finca o negocio.';
+    if (_step == 0 && _displayName.text.trim().length < _minNameLength) {
+      return _S.nameRequired;
     }
     if (_step == 1 && (_department == null || _municipality == null)) {
-      return 'Elige primero el departamento y luego el municipio.';
+      return _S.locationRequired;
     }
     if (_step == 2) {
       final lat = _coordinate(_lat.text), lng = _coordinate(_lng.text);
-      if (lat == null || lng == null) {
-        return 'Elige el punto de recogida en el mapa o usa la opción manual.';
-      }
-      if (lat < -4.3 || lat > 13.7 || lng < -81.8 || lng > -66.9) {
-        return 'Elige un punto dentro de Colombia.';
-      }
+      if (lat == null || lng == null) return _S.pointRequired;
+      if (!ColombiaBounds.contains(lat, lng)) return _S.pointOutside;
     }
-    if (_step == 3 && _description.text.length > 1000) {
-      return 'La descripción no puede superar 1000 caracteres.';
+    if (_step == _lastStep &&
+        _description.text.length > _maxDescriptionLength) {
+      return _S.descriptionTooLong(_maxDescriptionLength);
     }
     return null;
   }
@@ -161,6 +151,15 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
   double? _coordinate(String value) {
     final n = double.tryParse(value.trim().replaceAll(',', '.'));
     return n != null && n.isFinite ? n : null;
+  }
+
+  void _goToStep(int step) {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _step = step;
+      _error = null;
+    });
+    _saveDraft();
   }
 
   Future<void> _next() async {
@@ -171,22 +170,24 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
       HapticFeedback.mediumImpact();
       return;
     }
-    if (_step < 3) {
-      setState(() {
-        _step++;
-        _error = null;
-      });
-      await _saveDraft();
+    if (_step < _lastStep) {
+      _goToStep(_step + 1);
       return;
     }
     await _save();
   }
 
+  void _leave() {
+    if (!_success && _displayName.text.trim().isNotEmpty) {
+      showAppNotice(_S.draftKept, icon: Icons.save_outlined);
+    }
+    context.go(widget.onboarding ? '/' : '/perfil');
+  }
+
   Future<void> _save() async {
     final offline = ref.read(homeConnectivityProvider).valueOrNull == false;
     if (offline) {
-      setState(() => _error =
-          'Guardamos tu borrador en este dispositivo. Conéctate para enviar el perfil.');
+      setState(() => _error = _S.offlineSave);
       return;
     }
     setState(() {
@@ -205,9 +206,7 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
     switch (result) {
       case Ok():
         try {
-          await _storage
-              .delete(key: _draftKey)
-              .timeout(const Duration(milliseconds: 250));
+          await _storage.delete(key: _draftKey).timeout(_storageTimeout);
         } catch (_) {}
         setState(() {
           _saving = false;
@@ -216,7 +215,7 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
       case Err(:final error):
         setState(() {
           _saving = false;
-          _error = _profileErrorText(error);
+          _error = _S.error(error.code);
         });
     }
   }
@@ -226,124 +225,130 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
     final role = ref.watch(authProvider).valueOrNull?.user.role;
     final offline = ref.watch(homeConnectivityProvider).valueOrNull == false;
     if (role != null && role != 'producer' && role != 'supplier') {
-      return const Scaffold(
-          body: Center(child: Text('Esta sección es solo para productores.')));
+      return const Scaffold(body: Center(child: Text(_S.onlyProducers)));
     }
     if (_success) return _successScreen();
     if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    final steps = [
-      'Tu operación',
-      'Ubicación',
-      'Punto de recogida',
-      'Sobre tu oferta'
-    ];
-    return Scaffold(
-        backgroundColor: AppTheme.background,
-        appBar: AppBar(
-            title: const Text('Perfil de proveedor'),
-            leading: IconButton(
-                tooltip: 'Volver',
-                onPressed: () =>
-                    context.go(widget.onboarding ? '/' : '/perfil'),
-                icon: const Icon(Icons.arrow_back))),
-        body: SafeArea(
-            child: Column(children: [
-          Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text('Paso ${_step + 1} de 4 · ${steps[_step]}',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 10),
-                    TweenAnimationBuilder<double>(
-                        tween: Tween(end: (_step + 1) / 4),
-                        duration: MediaQuery.disableAnimationsOf(context)
-                            ? Duration.zero
-                            : const Duration(milliseconds: 300),
-                        builder: (context, v, _) => LinearProgressIndicator(
-                            value: v,
-                            minHeight: 6,
-                            borderRadius: BorderRadius.circular(6))),
-                    if (offline)
-                      const Padding(
-                          padding: EdgeInsets.only(top: 12),
-                          child: _OfflineNotice())
-                  ])),
-          Expanded(
-              child: AnimatedSwitcher(
-                  duration: MediaQuery.disableAnimationsOf(context)
-                      ? Duration.zero
-                      : const Duration(milliseconds: 280),
-                  transitionBuilder: (child, animation) => FadeTransition(
-                      opacity: animation,
-                      child: SlideTransition(
-                          position: Tween(
-                                  begin: const Offset(.04, 0), end: Offset.zero)
-                              .animate(animation),
-                          child: child)),
-                  child: SingleChildScrollView(
-                      key: ValueKey(_step),
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                      child: _stepContent()))),
-          if (_error != null)
+    const total = _lastStep + 1;
+    // Atras del sistema regresa un paso antes de salir del formulario.
+    return PopScope(
+      canPop: _step == 0 && !_saving,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _step > 0 && !_saving) _goToStep(_step - 1);
+      },
+      child: Scaffold(
+          backgroundColor: AppTheme.background,
+          appBar: AppBar(
+              title: const Text(_S.title),
+              leading: IconButton(
+                  tooltip: CommonStrings.back,
+                  onPressed: _saving ? null : _leave,
+                  icon: const Icon(Icons.arrow_back))),
+          body: SafeArea(
+              child: Column(children: [
             Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Semantics(
-                    liveRegion: true,
-                    child: Text(_error!,
-                        style: TextStyle(
-                            color: Theme.of(context).colorScheme.error)))),
-          Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(children: [
-                if (_step > 0)
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(_S.stepOf(_step + 1, total, _S.steps[_step]),
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 10),
+                      TweenAnimationBuilder<double>(
+                          tween: Tween(end: (_step + 1) / total),
+                          duration: AppMotion.of(context, AppMotion.medium),
+                          builder: (context, v, _) => LinearProgressIndicator(
+                              value: v,
+                              minHeight: 6,
+                              borderRadius: BorderRadius.circular(6))),
+                      if (offline)
+                        const Padding(
+                            padding: EdgeInsets.only(top: 12),
+                            child: _Notice(
+                                icon: Icons.cloud_off_outlined,
+                                text: _S.offline)),
+                      if (_draftRestored)
+                        Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: _Notice(
+                                icon: Icons.restore_outlined,
+                                text: _S.draftRestored,
+                                onClose: () =>
+                                    setState(() => _draftRestored = false))),
+                    ])),
+            Expanded(
+                child: AnimatedSwitcher(
+                    duration: AppMotion.of(context, AppMotion.medium),
+                    transitionBuilder: (child, animation) => FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                            position: Tween(
+                                    begin: const Offset(.04, 0),
+                                    end: Offset.zero)
+                                .animate(animation),
+                            child: child)),
+                    child: SingleChildScrollView(
+                        key: ValueKey(_step),
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                        child: _stepContent()))),
+            if (_error != null)
+              Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Semantics(
+                      liveRegion: true,
+                      child: Text(_error!,
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.error)))),
+            Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(children: [
+                  if (_step > 0)
+                    Expanded(
+                        child: OutlinedButton(
+                            onPressed:
+                                _saving ? null : () => _goToStep(_step - 1),
+                            child: const Text(CommonStrings.previous))),
+                  if (_step > 0) const SizedBox(width: 12),
                   Expanded(
-                      child: OutlinedButton(
-                          onPressed: _saving
-                              ? null
-                              : () => setState(() {
-                                    _step--;
-                                    _error = null;
-                                  }),
-                          child: const Text('Atrás'))),
-                if (_step > 0) const SizedBox(width: 12),
-                Expanded(
-                    child: FilledButton(
-                        onPressed: _saving ? null : _next,
-                        child: _saving
-                            ? const SizedBox.square(
-                                dimension: 20,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2))
-                            : Text(
-                                _step == 3 ? 'Guardar perfil' : 'Siguiente')))
-              ]))
-        ])));
+                      child: FilledButton(
+                          onPressed: _saving ? null : _next,
+                          child: _saving
+                              ? const SizedBox.square(
+                                  dimension: 20,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2))
+                              : Text(_step == _lastStep
+                                  ? _S.saveProfile
+                                  : CommonStrings.next)))
+                ]))
+          ]))),
+    );
   }
 
   Widget _stepContent() => switch (_step) {
         0 => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             const _StepIntro(
                 icon: Icons.storefront_outlined,
-                title: '¿Cómo se llama tu operación?',
-                body:
-                    'Este nombre lo verán las personas que buscan tus productos.'),
+                title: _S.nameTitle,
+                body: _S.nameBody),
             const SizedBox(height: 20),
             TextField(
                 controller: _displayName,
-                maxLength: 100,
+                maxLength: _maxNameLength,
                 textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(
-                    labelText: 'Nombre de la finca o negocio'),
-                onChanged: (_) => _changed()),
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(labelText: _S.nameLabel),
+                onChanged: (_) => _changed(),
+                onSubmitted: (_) => _next()),
             const SizedBox(height: 20),
-            Text('¿Cómo produces?',
+            Text(_S.producerTypeTitle,
                 style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 10),
             OptionCircleSelector<String>(
@@ -352,49 +357,42 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
                   setState(() => _producerType = v);
                   _saveDraft();
                 },
-                options: const [
-                  SelectorOption(
-                      value: 'Finca familiar',
-                      label: 'Finca familiar',
-                      icon: Icons.agriculture_outlined),
-                  SelectorOption(
-                      value: 'Asociación',
-                      label: 'Asociación',
-                      icon: Icons.groups_outlined),
-                  SelectorOption(
-                      value: 'Negocio',
-                      label: 'Negocio',
-                      icon: Icons.store_outlined)
+                options: [
+                  for (var i = 0; i < _S.producerTypes.length; i++)
+                    SelectorOption(
+                        value: _S.producerTypes[i],
+                        label: _S.producerTypes[i],
+                        icon: _producerTypeIcons[i]),
                 ])
           ]),
         1 => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             const _StepIntro(
                 icon: Icons.map_outlined,
-                title: '¿Dónde está tu operación?',
-                body: 'Elige departamento y municipio de la lista.'),
+                title: _S.locationTitle,
+                body: _S.locationBody),
             const SizedBox(height: 20),
             SearchableSheetSelector<String>(
-                label: 'Departamento',
-                hint: 'Seleccionar departamento',
-                options: _departments.keys
+                label: _S.department,
+                hint: _S.departmentHint,
+                options: colombiaDepartments.keys
                     .map((name) => SelectorOption(value: name, label: name))
                     .toList(),
                 value: _department,
                 onChanged: (value) {
                   setState(() {
+                    if (value != _department) _municipality = null;
                     _department = value;
-                    _municipality = null;
                     _error = null;
                   });
                   _saveDraft();
                 }),
             const SizedBox(height: 12),
             SearchableSheetSelector<String>(
-                label: 'Municipio',
+                label: _S.municipality,
                 hint: _department == null
-                    ? 'Elige primero el departamento'
-                    : 'Seleccionar municipio',
-                options: (_departments[_department] ?? const <String>[])
+                    ? _S.municipalityLocked
+                    : _S.municipalityHint,
+                options: (colombiaDepartments[_department] ?? const <String>[])
                     .map((name) => SelectorOption(value: name, label: name))
                     .toList(),
                 value: _municipality,
@@ -410,88 +408,68 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
         2 => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             const _StepIntro(
                 icon: Icons.location_on_outlined,
-                title: 'Marca el punto de recogida',
-                body:
-                    'Pon un punto aproximado donde podemos recoger tus productos.'),
+                title: _S.pointTitle,
+                body: _S.pointBody),
             const SizedBox(height: 16),
-            _LocationPickerMap(onSelect: (lat, lng) => _mapSelection(lat, lng)),
+            _LocationPickerMap(
+                lat: _coordinate(_lat.text),
+                lng: _coordinate(_lng.text),
+                onSelect: _mapSelection),
             const SizedBox(height: 12),
             FilledButton.tonalIcon(
-                onPressed: () => _mapSelection(5.5353, -73.3678),
+                onPressed: () => _mapSelection(
+                    ColombiaBounds.referenceLat, ColombiaBounds.referenceLng),
                 icon: const Icon(Icons.my_location),
-                label: const Text('Usar ubicación de referencia')),
+                label: const Text(_S.useReference)),
             TextButton.icon(
                 onPressed: _useGps,
                 icon: const Icon(Icons.gps_fixed),
-                label: const Text('Usar mi ubicación GPS')),
+                label: const Text(_S.useGps)),
             const Row(children: [
               Icon(Icons.lock_outline, size: 18),
               SizedBox(width: 8),
-              Expanded(
-                  child:
-                      Text('La ubicación exacta no se muestra a compradores.'))
+              Expanded(child: Text(_S.privacy))
             ]),
             const SizedBox(height: 10),
             TextButton(
                 onPressed: () =>
                     setState(() => _manualCoordinates = !_manualCoordinates),
-                child: Text(_manualCoordinates
-                    ? 'Ocultar ingreso manual'
-                    : 'Ingresar coordenadas manualmente')),
+                child:
+                    Text(_manualCoordinates ? _S.manualHide : _S.manualShow)),
             if (_manualCoordinates) ...[
-              TextField(
-                  controller: _lat,
-                  keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true, signed: true),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.,-]'))
-                  ],
-                  decoration: const InputDecoration(labelText: 'Latitud'),
-                  onChanged: (_) => _changed()),
-              TextField(
-                  controller: _lng,
-                  keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true, signed: true),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.,-]'))
-                  ],
-                  decoration: const InputDecoration(labelText: 'Longitud'),
-                  onChanged: (_) => _changed())
+              _coordinateField(_lat, _S.latitude),
+              _coordinateField(_lng, _S.longitude),
             ],
             if (_lat.text.isNotEmpty && _lng.text.isNotEmpty)
-              Text('Punto: ${_lat.text}, ${_lng.text}',
+              Text(_S.point(_lat.text, _lng.text),
                   style: Theme.of(context).textTheme.bodySmall)
           ]),
         _ => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             const _StepIntro(
                 icon: Icons.shopping_basket_outlined,
-                title: 'Cuéntales sobre tu oferta',
-                body:
-                    'Agrega detalles que ayuden a conocer lo que produces. Es opcional.'),
+                title: _S.offerTitle,
+                body: _S.offerBody),
             const SizedBox(height: 18),
             TextField(
                 controller: _description,
-                maxLength: 1000,
+                maxLength: _maxDescriptionLength,
                 maxLines: 5,
                 textCapitalization: TextCapitalization.sentences,
                 decoration: const InputDecoration(
-                    labelText: 'Descripción (opcional)',
-                    hintText: 'Productos, cosechas o forma de entrega'),
+                    labelText: _S.descriptionLabel,
+                    hintText: _S.descriptionHint),
                 onChanged: (_) => _changed()),
             Wrap(
                 spacing: 8,
                 runSpacing: 4,
-                children: [
-                  'Producción orgánica',
-                  'Entrega en finca',
-                  'Cosecha propia'
-                ]
+                children: _S.descriptionChips
                     .map((chip) => ActionChip(
                         label: Text(chip),
                         onPressed: () {
                           final text = _description.text.trim();
-                          _description.text =
-                              text.isEmpty ? chip : '$text · $chip';
+                          _description.text = text.isEmpty
+                              ? chip
+                              : '$text${_S.chipSeparator}$chip';
                           _description.selection = TextSelection.collapsed(
                               offset: _description.text.length);
                           setState(() {});
@@ -501,28 +479,51 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
             const SizedBox(height: 24),
             Card(
                 child: Padding(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Revisa tu perfil',
+                          Text(_S.reviewTitle,
                               style: Theme.of(context).textTheme.titleMedium),
-                          const SizedBox(height: 10),
-                          Text('Operación: ${_displayName.text.trim()}'),
-                          Text('Tipo: $_producerType'),
-                          Text(
-                              'Ubicación: ${_municipality ?? '—'}, ${_department ?? '—'}'),
-                          Text('Punto: ${_lat.text}, ${_lng.text}'),
-                          Text(
-                              'Descripción: ${_description.text.trim().isEmpty ? 'Sin descripción' : _description.text.trim()}')
+                          const SizedBox(height: 6),
+                          _ReviewRow(
+                              label: _S.reviewOperation,
+                              value:
+                                  '${_displayName.text.trim()} · $_producerType',
+                              onEdit: () => _goToStep(0)),
+                          _ReviewRow(
+                              label: _S.reviewLocation,
+                              value:
+                                  '${_municipality ?? CommonStrings.empty}, ${_department ?? CommonStrings.empty}',
+                              onEdit: () => _goToStep(1)),
+                          _ReviewRow(
+                              label: _S.reviewPoint,
+                              value: '${_lat.text}, ${_lng.text}',
+                              onEdit: () => _goToStep(2)),
+                          _ReviewRow(
+                              label: _S.reviewDescription,
+                              value: _description.text.trim().isEmpty
+                                  ? _S.noDescription
+                                  : _description.text.trim()),
                         ])))
           ]),
       };
 
+  Widget _coordinateField(TextEditingController controller, String label) =>
+      TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(
+              decimal: true, signed: true),
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[0-9.,-]'))
+          ],
+          decoration: InputDecoration(labelText: label),
+          onChanged: (_) => _changed());
+
   void _mapSelection(double lat, double lng) {
     setState(() {
-      _lat.text = lat.toStringAsFixed(4);
-      _lng.text = lng.toStringAsFixed(4);
+      _lat.text = lat.toStringAsFixed(ColombiaBounds.coordinateDecimals);
+      _lng.text = lng.toStringAsFixed(ColombiaBounds.coordinateDecimals);
       _error = null;
     });
     _saveDraft();
@@ -530,8 +531,7 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
   }
 
   Future<void> _useGps() async {
-    setState(() => _error =
-        'El GPS del dispositivo no está habilitado en esta versión. Puedes marcar el mapa o ingresar el punto manualmente.');
+    setState(() => _error = _S.gpsUnavailable);
   }
 
   Widget _successScreen() => Scaffold(
@@ -542,7 +542,7 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 TweenAnimationBuilder<double>(
                     tween: Tween(begin: .5, end: 1),
-                    duration: const Duration(milliseconds: 350),
+                    duration: AppMotion.of(context, AppMotion.medium),
                     builder: (context, scale, child) =>
                         Transform.scale(scale: scale, child: child),
                     child: const CircleAvatar(
@@ -551,24 +551,25 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
                         child: Icon(Icons.check_rounded,
                             size: 52, color: AppTheme.forest))),
                 const SizedBox(height: 24),
-                Text('¡Perfil guardado!',
+                Text(_S.savedTitle,
                     style: Theme.of(context)
                         .textTheme
                         .headlineSmall
                         ?.copyWith(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 8),
-                const Text('Ya puedes empezar a ofrecer tus productos.'),
+                const Text(_S.savedBody),
                 const SizedBox(height: 24),
                 SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
                         onPressed: () => context.go('/lotes/nuevo'),
                         icon: const Icon(Icons.add),
-                        label: const Text('Publicar mi primer lote'))),
+                        label: const Text(_S.firstLot))),
                 TextButton(
                     onPressed: () =>
                         context.go(widget.onboarding ? '/' : '/perfil'),
-                    child: const Text('Volver a mi cuenta'))
+                    child:
+                        Text(widget.onboarding ? _S.goHome : _S.backToAccount))
               ]))));
 }
 
@@ -592,50 +593,99 @@ class _StepIntro extends StatelessWidget {
       ]);
 }
 
+class _ReviewRow extends StatelessWidget {
+  const _ReviewRow({required this.label, required this.value, this.onEdit});
+  final String label, value;
+  final VoidCallback? onEdit;
+  @override
+  Widget build(BuildContext context) => Row(children: [
+        Expanded(
+            child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Text('$label: $value'))),
+        if (onEdit != null)
+          IconButton(
+              tooltip: _S.editSection(label.toLowerCase()),
+              onPressed: onEdit,
+              icon: const Icon(Icons.edit_outlined, size: 20)),
+      ]);
+}
+
+// Mapa esquematico: el pin se ubica donde quedo el punto elegido.
 class _LocationPickerMap extends StatelessWidget {
-  const _LocationPickerMap({required this.onSelect});
+  const _LocationPickerMap(
+      {required this.lat, required this.lng, required this.onSelect});
+  final double? lat, lng;
   final void Function(double lat, double lng) onSelect;
+
+  static const _height = 190.0;
+  static const _pinSize = 40.0;
+  static const _latSpan = ColombiaBounds.maxLat - ColombiaBounds.minLat;
+  static const _lngSpan = ColombiaBounds.maxLng - ColombiaBounds.minLng;
+
   @override
   Widget build(BuildContext context) => Semantics(
-      label: 'Mapa de Colombia. Toca para elegir un punto',
-      child: GestureDetector(
-          onTapDown: (details) {
-            final box = context.findRenderObject() as RenderBox;
-            final point = box.globalToLocal(details.globalPosition);
-            final lat = 13.7 - (point.dy / box.size.height) * 18;
-            final lng = -81.8 + (point.dx / box.size.width) * 14.9;
-            onSelect(lat.clamp(-4.3, 13.7), lng.clamp(-81.8, -66.9));
-          },
-          child: Container(
-              height: 190,
-              decoration: BoxDecoration(
-                  color: const Color(0xFFE5EFE7),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppTheme.outline)),
-              child: Stack(alignment: Alignment.center, children: [
-                CustomPaint(size: Size.infinite, painter: _MapPainter()),
-                const Icon(Icons.location_pin,
-                    color: AppTheme.forest, size: 40),
-                Positioned(
-                    left: 14,
-                    top: 12,
-                    child: Text('COLOMBIA',
-                        style: TextStyle(
-                            color: AppTheme.forest.withValues(alpha: .8),
-                            fontWeight: FontWeight.w700))),
-                Positioned(
-                    right: 8,
-                    bottom: 6,
-                    child: Text('Mapa esquemático',
-                        style: Theme.of(context).textTheme.labelSmall))
-              ]))));
+      label: _S.mapLabel,
+      child: LayoutBuilder(builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final selected =
+            lat != null && lng != null && ColombiaBounds.contains(lat!, lng!);
+        final x = selected
+            ? (lng! - ColombiaBounds.minLng) / _lngSpan * width
+            : width / 2;
+        final y = selected
+            ? (ColombiaBounds.maxLat - lat!) / _latSpan * _height
+            : _height / 2;
+        return GestureDetector(
+            onTapDown: (details) {
+              final point = details.localPosition;
+              final tapLat =
+                  ColombiaBounds.maxLat - (point.dy / _height) * _latSpan;
+              final tapLng =
+                  ColombiaBounds.minLng + (point.dx / width) * _lngSpan;
+              onSelect(
+                  tapLat.clamp(ColombiaBounds.minLat, ColombiaBounds.maxLat),
+                  tapLng.clamp(ColombiaBounds.minLng, ColombiaBounds.maxLng));
+            },
+            child: Container(
+                height: _height,
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                    color: AppTheme.mapSurface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppTheme.outline)),
+                child: Stack(children: [
+                  Positioned.fill(child: CustomPaint(painter: _MapPainter())),
+                  AnimatedPositioned(
+                      duration: AppMotion.of(context, AppMotion.fast),
+                      left: x - _pinSize / 2,
+                      top: y - _pinSize,
+                      child: Icon(Icons.location_pin,
+                          color: selected
+                              ? AppTheme.forest
+                              : AppTheme.forest.withValues(alpha: .35),
+                          size: _pinSize)),
+                  Positioned(
+                      left: 14,
+                      top: 12,
+                      child: Text(_S.mapTitle,
+                          style: TextStyle(
+                              color: AppTheme.forest.withValues(alpha: .8),
+                              fontWeight: FontWeight.w700))),
+                  Positioned(
+                      right: 8,
+                      bottom: 6,
+                      child: Text(_S.mapNote,
+                          style: Theme.of(context).textTheme.labelSmall))
+                ])));
+      }));
 }
 
 class _MapPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final p = Paint()
-      ..color = const Color(0xFFBDD7C5)
+      ..color = AppTheme.mapLand
       ..style = PaintingStyle.fill;
     final path = Path()
       ..moveTo(size.width * .43, size.height * .08)
@@ -655,30 +705,27 @@ class _MapPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class _OfflineNotice extends StatelessWidget {
-  const _OfflineNotice();
+class _Notice extends StatelessWidget {
+  const _Notice({required this.icon, required this.text, this.onClose});
+  final IconData icon;
+  final String text;
+  final VoidCallback? onClose;
   @override
   Widget build(BuildContext context) => Container(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.fromLTRB(12, 12, onClose == null ? 12 : 0, 12),
       decoration: BoxDecoration(
-          color: const Color(0xFFFFF3CD),
+          color: AppTheme.warningSurface,
           borderRadius: BorderRadius.circular(14)),
-      child: const Row(children: [
-        Icon(Icons.cloud_off_outlined),
-        SizedBox(width: 8),
+      child: Row(children: [
+        Icon(icon, color: AppTheme.warningIcon),
+        const SizedBox(width: 8),
         Expanded(
-            child: Text(
-                'Sin conexión. El borrador queda guardado en este dispositivo.'))
+            child: Text(text,
+                style: const TextStyle(color: AppTheme.warningText))),
+        if (onClose != null)
+          IconButton(
+              tooltip: CommonStrings.understood,
+              onPressed: onClose,
+              icon: const Icon(Icons.close, size: 18)),
       ]));
 }
-
-String _profileErrorText(DomainFailure failure) => switch (failure.code) {
-      'invalid_profile' =>
-        'Revisa el nombre, municipio, departamento y descripción.',
-      'invalid_coordinates' => 'Elige un punto dentro de Colombia.',
-      'forbidden' => 'Solo productores pueden guardar este perfil.',
-      'network_error' =>
-        'Sin conexión. El borrador sigue guardado; intenta de nuevo cuando tengas señal.',
-      _ =>
-        'No pudimos guardar el perfil. Verifica los datos e intenta de nuevo.'
-    };
