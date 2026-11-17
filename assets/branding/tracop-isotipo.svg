@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="162" height="140" viewBox="0 0 162 140">
+  
+  <g id="isotipo" transform="translate(20 20)">
+    <path id="hoja-izquierda" d="M60 84 C64 48 44 22 14 17 Q7 16 8 23 C10 56 28 84 60 84 Z" fill="#0F5B1F"/>
+    <path id="hoja-derecha" d="M62 84 C58 48 78 22 108 17 Q115 16 114 23 C112 56 94 84 62 84 Z" fill="#8CC63F"/>
+  </g>
+</svg>

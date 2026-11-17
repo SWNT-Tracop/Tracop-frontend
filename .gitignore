@@ -1,0 +1,42 @@
+*.local
+.pub/
+.pub-cache/
+.dart_tool/
+build/
+.build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+coverage/
+
+# Android local/generated files; keep the platform project and app resources.
+android/.gradle/
+android/local.properties
+android/*.iml
+android/key.properties
+android/captures/
+android/app/build/
+
+# iOS generated/local files; keep the Xcode project and app sources.
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/ephemeral/
+ios/Pods/
+ios/.symlinks/
+ios/Runner.xcworkspace/xcuserdata/
+ios/Runner.xcodeproj/xcuserdata/
+
+# Desktop Flutter-generated files.
+linux/flutter/ephemeral/
+macos/Flutter/ephemeral/
+windows/flutter/ephemeral/
+
+*.iml
+.classpath
+.project
+.settings/
+.idea/
+.vscode/
+*.log
+.DS_Store
+package_config.json

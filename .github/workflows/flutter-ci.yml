@@ -1,0 +1,59 @@
+name: Flutter CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: flutter-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  snyk-security:
+    name: Snyk Code security scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Snyk CLI
+        uses: snyk/actions/setup@11b673cfb4b0dc0d860a1323caa199d54950dcce # pinned commit
+
+      - name: Scan Dart and Flutter code
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+          SNYK_ORG: ${{ secrets.ORG_ID }}
+        run: |
+          if [ -z "$SNYK_ORG" ]; then
+            echo "Error: El secreto ORG_ID está vacío o no está configurado en GitHub."
+            exit 1
+          fi
+          snyk code test --org="$SNYK_ORG" --severity-threshold=high
+
+  flutter-quality:
+    name: Flutter analyze and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@4cab68ce0f1c7c924f688bff4792e044f1aeb30c # pinned commit
+        with:
+          channel: stable
+          flutter-version: 3.47.9
+          cache: true
+          pub-cache-key: ${{ runner.os }}-pub
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze Dart and Flutter code
+        run: flutter analyze
+
+      - name: Run Flutter tests
+        run: flutter test
