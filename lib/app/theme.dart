@@ -15,6 +15,12 @@ class AppTheme {
   static const Color warningIcon = Color(0xFF704E00);
   static const Color warningText = Color(0xFF553B00);
   static const Color danger = Color(0xFFC75B58);
+  static const Color dangerStrong = Color(0xFFB3261E);
+  static const Color dangerSurface = Color(0xFFFDECEA);
+  static const Color dangerText = Color(0xFF7F1D1D);
+  static const Color neutralSurface = Color(0xFFF3F4F6);
+  static const Color infoText = Color(0xFF0D47A1);
+  static const Color infoSurface = Color(0xFFE3F2FD);
   static const Color buyerAccent = Color(0xFF315E9E);
   static const Color carrierAccent = Color(0xFF8A5A00);
   static const Color mapSurface = Color(0xFFE5EFE7);

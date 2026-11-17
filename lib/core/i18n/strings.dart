@@ -131,6 +131,123 @@ abstract final class ProfileStrings {
       };
 }
 
+abstract final class LotStatusStrings {
+  // Estado visto por quien vende.
+  static String owner(String status) => switch (status) {
+        'published' => 'Publicado',
+        'draft' => 'Borrador',
+        'reserved' => 'Reservado',
+        'sold_out' => 'Agotado',
+        'cancelled' => 'Cancelado',
+        'expired' => 'Vencido',
+        _ => status
+      };
+
+  // Estado visto por quien busca.
+  static String public(String status) =>
+      switch (status) { 'published' => 'Disponible', _ => owner(status) };
+}
+
+abstract final class LotStrings {
+  static const productFallback = 'Producto agropecuario';
+  static const noLocation = 'Ubicación no informada';
+  static const noQuality = 'No especificada';
+  static const viewLot = 'Ver lote';
+  static const tapToFlipBack = 'Toca para volver';
+  static String location(String municipality, String department) =>
+      '$municipality, $department';
+  static String quantity(String amount, String unit) => '$amount $unit';
+  static String pricePer(String price, String unit) => '$price por $unit';
+  static String detailsTitle(String product) => '$product · Detalles';
+  static String quality(String value) => 'Calidad: $value';
+  static String dateRange(String from, String until) => '$from – $until';
+}
+
+abstract final class CatalogStrings {
+  static const title = 'Buscar lotes';
+  static const searchLabel = 'Buscar productos o ubicación';
+  static const searchHint = 'Producto o ubicación';
+  static const clearSearch = 'Limpiar búsqueda';
+  static const openFilters = 'Abrir filtros';
+  static const sortBy = 'Ordenar:';
+  static const sortRecent = 'Recientes';
+  static const sortPrice = 'Menor precio';
+  static const sortAvailability = 'Disponibilidad';
+  static const clearFilters = 'Limpiar filtros';
+  static const unknownRole =
+      'No pudimos confirmar tu rol; mostramos la búsqueda general.';
+  static const carrierHint =
+      'Prioriza cantidad y ubicación para planear la recogida.';
+  static String resultsLabel(int count) => '$count resultados cargados';
+  static String results(int count, bool hasMore) =>
+      '$count ${count == 1 ? 'lote cargado' : 'lotes cargados'}'
+      '${hasMore ? ' · hay más resultados' : ''}';
+  static const loadMore = 'Cargar más';
+  static String until(String date) => 'hasta $date';
+  static String availableUntil(String date) => 'Disponible hasta $date';
+
+  static const filters = 'Filtros';
+  static const category = 'Categoría';
+  static const allCategories = 'Todas las categorías';
+  static const product = 'Producto';
+  static const allProducts = 'Todos los productos';
+  static const minPrice = 'Precio mínimo (COP)';
+  static const maxPrice = 'Precio máximo (COP)';
+  static const priceRangeError = 'El mínimo no puede ser mayor que el máximo.';
+  static const availableSoon = 'Disponible en los próximos 30 días';
+  static const showResults = 'Ver resultados';
+  static String priceChip(String min, String max) => 'Precio $min – $max';
+  static const priceFrom = 'desde';
+  static const priceUpTo = 'hasta';
+  static String priceChipFrom(String min) => 'Precio $priceFrom $min';
+  static String priceChipUpTo(String max) => 'Precio $priceUpTo $max';
+  static const availableChip = 'Disponible próximamente';
+  static String removeFilter(String label) => 'Quitar filtro $label';
+
+  static const offlinePrefix = 'Sin conexión.';
+  static const staleCachePrefix = 'No pudimos actualizar.';
+  static const noCachedResults =
+      'No hay resultados guardados para esta búsqueda.';
+  static String lastUpdate(String date) => 'Última actualización: $date';
+  static const loadError =
+      'No pudimos cargar los lotes. Revisa tu conexión e inténtalo de nuevo.';
+  static const noMatches = 'No encontramos lotes con esos criterios.';
+  static const noLots = 'Todavía no hay lotes disponibles.';
+  static const clearAndSearch = 'Quitar filtros y buscar de nuevo';
+  static String page(int number) => 'Página $number';
+}
+
+abstract final class LotDetailStrings {
+  static const title = 'Detalle del lote';
+  static const back = 'Volver';
+  static const unknownRole =
+      'No pudimos confirmar tu rol; ocultamos acciones específicas.';
+  static const quantityPickup = 'Cantidad para recoger';
+  static const quantityAvailable = 'Cantidad disponible';
+  static String pricePerUnit(String unit) => 'Precio por $unit';
+  static const availability = 'Disponibilidad';
+  static const pickupLocation = 'Ubicación de recogida';
+  static const location = 'Ubicación';
+  static const quality = 'Calidad informada';
+  static const status = 'Estado';
+  static const originContact = 'Contacto de origen';
+  static const producer = 'Productor';
+  static const provider = 'Proveedor';
+  static const disclaimer =
+      'La disponibilidad puede cambiar. La información se confirma con el proveedor.';
+  static String photoPosition(int current, int total) => '$current / $total';
+  static String photoLabel(int current, int total) => 'Foto $current de $total';
+  static const offline = 'Sin conexión';
+  static const stale = 'No se pudo actualizar';
+  static const showingSaved = 'mostrando detalle guardado';
+  static String savedAt(String date) => 'guardado $date';
+  static const loading = 'Cargando detalle del lote';
+  static const notFound = 'Este lote ya no está disponible.';
+  static const loadError = 'No pudimos cargar el detalle del lote.';
+  static const backToSearch = 'Volver a buscar';
+  static const backToMyLots = 'Volver a mis lotes';
+}
+
 abstract final class ProviderProfileStrings {
   static const title = 'Perfil de proveedor';
   static const onlyProducers = 'Esta sección es solo para productores.';
