@@ -42,6 +42,29 @@ void main() {
     expect(find.text('Lote publicado.'), findsOneWidget);
   });
 
+  testWidgets('my lots explains that publishing needs a connection',
+      (tester) async {
+    app_router.router.go('/lotes');
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = _LotRepository();
+    await tester.pumpWidget(_testApp(repository, connected: false));
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Publicar lote').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Necesitas conexión para hacer este cambio.'),
+        findsOneWidget);
+    expect(
+        find.text('El lote quedará visible para los compradores con la '
+            'información actual.'),
+        findsNothing);
+    expect(repository.publishCalls, 0);
+  });
+
   testWidgets('lot form validates fields and creates a draft', (tester) async {
     app_router.router.go('/lotes/nuevo');
     await tester.binding.setSurfaceSize(const Size(390, 844));

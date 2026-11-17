@@ -21,6 +21,7 @@ class AppTheme {
   static const Color neutralSurface = Color(0xFFF3F4F6);
   static const Color infoText = Color(0xFF0D47A1);
   static const Color infoSurface = Color(0xFFE3F2FD);
+  static const Color draftAccent = Color(0xFF707A71);
   static const Color buyerAccent = Color(0xFF315E9E);
   static const Color carrierAccent = Color(0xFF8A5A00);
   static const Color mapSurface = Color(0xFFE5EFE7);

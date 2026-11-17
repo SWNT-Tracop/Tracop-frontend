@@ -217,6 +217,62 @@ abstract final class CatalogStrings {
   static String page(int number) => 'Página $number';
 }
 
+abstract final class MyLotsStrings {
+  static const title = 'Mis lotes';
+  static const sellerSubtitle = 'Crea, publica y mantén al día tu oferta.';
+  static const buyerSubtitle = 'Aquí puedes consultar los lotes de tu cuenta.';
+  static const newLot = 'Nuevo lote';
+  static const sortByChange = 'Ordenar por modificación';
+  static const newest = 'Recientes';
+  static const oldest = 'Antiguos';
+  static const all = 'Todos';
+  static const drafts = 'Borradores';
+  static const published = 'Publicados';
+  static const cancelled = 'Cancelados';
+  static String heading(String filter, int count) =>
+      '$filter · $count ${count == 1 ? 'lote' : 'lotes'}';
+  static const working = 'Guardando cambios del lote';
+
+  static const publishTitle = 'Publicar lote';
+  static const publishBody =
+      'El lote quedará visible para los compradores con la información actual.';
+  static const publish = 'Publicar';
+  static const published1 = 'Lote publicado.';
+  static const cancelTitle = 'Cancelar lote';
+  static const cancelBody =
+      'El lote dejará de estar disponible y esta acción no se puede deshacer.';
+  static const cancel = 'Cancelar';
+  static const cancelled1 = 'Lote cancelado.';
+  static const deleteTitle = 'Eliminar borrador';
+  static const deleteBody = 'El borrador se eliminará de forma permanente.';
+  static const delete = 'Eliminar';
+  static const deleted = 'Borrador eliminado.';
+  static const needsConnection = 'Necesitas conexión para hacer este cambio.';
+
+  static const view = 'Ver lote';
+  static const viewShort = 'Ver';
+  static const edit = 'Editar lote';
+  static String available(String range) => 'Disponible $range';
+  static String availability(String range) => 'Disponibilidad: $range';
+
+  static const offline =
+      'Sin conexión. Puedes revisar tus lotes guardados; para publicar, cancelar o eliminar necesitas señal.';
+  static const onlySellers =
+      'Solo productores y proveedores pueden publicar lotes.';
+  static const exploreOffer = 'Explora la oferta disponible desde la búsqueda.';
+  static const searchLots = 'Buscar lotes';
+  static const emptyFiltered = 'No hay lotes en este estado.';
+  static const empty = 'Aún no tienes lotes.';
+  static const emptyFilteredBody = 'Prueba con otro filtro para ver tus lotes.';
+  static const emptyBody =
+      'Publica tu cosecha y aparece en la búsqueda de compradores.';
+  static const createLot = 'Crear lote';
+  static const seeAll = 'Ver todos';
+  static const firstLot = 'Publicar mi primer lote';
+  static const loadError = 'No pudimos cargar tus lotes.';
+  static const loadErrorBody = 'Revisa tu conexión e intenta de nuevo.';
+}
+
 abstract final class LotDetailStrings {
   static const title = 'Detalle del lote';
   static const back = 'Volver';

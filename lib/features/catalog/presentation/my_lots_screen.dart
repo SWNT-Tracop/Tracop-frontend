@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
+import '../../../app/motion.dart';
 import '../../../app/theme.dart';
+import '../../../core/config/catalog_config.dart';
+import '../../../core/i18n/formats.dart';
+import '../../../core/i18n/strings.dart';
 import '../../../shared/widgets/lot_interaction_widgets.dart';
 import '../../auth/presentation/providers/auth_provider.dart';
 import '../../home/presentation/home_screen.dart';
@@ -13,6 +16,8 @@ import 'lot_detail_screen.dart' show lotDetailProvider;
 import 'lot_error_text.dart';
 import 'providers/catalog_provider.dart';
 import 'providers/lot_management_provider.dart';
+
+typedef _S = MyLotsStrings;
 
 class MyLotsScreen extends ConsumerStatefulWidget {
   const MyLotsScreen({super.key});
@@ -52,9 +57,20 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        duration: AppMotion.snackBar,
         content: Text(message),
-        backgroundColor: error ? const Color(0xFFB3261E) : AppTheme.forest,
+        backgroundColor: error ? AppTheme.dangerStrong : AppTheme.forest,
       ));
+  }
+
+  bool get _offline => ref.read(homeConnectivityProvider).valueOrNull == false;
+
+  // Sin conexion la accion fallaria; se avisa antes de confirmar.
+  bool _ensureOnline() {
+    if (!_offline) return true;
+    _showMessage(_S.needsConnection, error: true);
+    return false;
   }
 
   void _rememberModification(String lotId) {
@@ -78,13 +94,12 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Volver'),
+            child: const Text(CommonStrings.back),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: destructive
-                ? FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFB3261E))
+                ? FilledButton.styleFrom(backgroundColor: AppTheme.dangerStrong)
                 : null,
             child: Text(action),
           ),
@@ -95,11 +110,11 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
   }
 
   Future<void> _publish(Lot lot) async {
+    if (_busy || !_ensureOnline()) return;
     final confirmed = await _confirm(
-      title: 'Publicar lote',
-      message:
-          'El lote quedará visible para los compradores con la información actual.',
-      action: 'Publicar',
+      title: _S.publishTitle,
+      message: _S.publishBody,
+      action: _S.publish,
     );
     if (!confirmed || _busy) return;
     setState(() => _busy = true);
@@ -111,7 +126,7 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
     result.map(
       ok: (_) {
         _rememberModification(lot.id);
-        _showMessage('Lote publicado.');
+        _showMessage(_S.published1);
         ref.invalidate(lotByIdProvider(lot.id));
         _refresh();
       },
@@ -123,11 +138,11 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
   }
 
   Future<void> _cancel(Lot lot) async {
+    if (_busy || !_ensureOnline()) return;
     final confirmed = await _confirm(
-      title: 'Cancelar lote',
-      message:
-          'El lote dejará de estar disponible y esta acción no se puede deshacer.',
-      action: 'Cancelar lote',
+      title: _S.cancelTitle,
+      message: _S.cancelBody,
+      action: _S.cancelTitle,
       destructive: true,
     );
     if (!confirmed || _busy) return;
@@ -140,7 +155,7 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
     result.map(
       ok: (_) {
         _rememberModification(lot.id);
-        _showMessage('Lote cancelado.');
+        _showMessage(_S.cancelled1);
         ref.invalidate(lotByIdProvider(lot.id));
         _refresh();
       },
@@ -152,10 +167,11 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
   }
 
   Future<void> _delete(Lot lot) async {
+    if (_busy || !_ensureOnline()) return;
     final confirmed = await _confirm(
-      title: 'Eliminar borrador',
-      message: 'El borrador se eliminará de forma permanente.',
-      action: 'Eliminar',
+      title: _S.deleteTitle,
+      message: _S.deleteBody,
+      action: _S.delete,
       destructive: true,
     );
     if (!confirmed || _busy) return;
@@ -171,7 +187,7 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
             Map<String, DateTime>.of(ref.read(localLotModifiedAtProvider))
               ..remove(lot.id);
         ref.read(localLotModifiedAtProvider.notifier).state = modifiedAt;
-        _showMessage('Borrador eliminado.');
+        _showMessage(_S.deleted);
         ref.invalidate(lotByIdProvider(lot.id));
         _refresh();
       },
@@ -228,19 +244,21 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
       'cancelled': allLots.where((lot) => lot.status == 'cancelled').length,
     };
     final filterLabel = switch (_statusFilter) {
-      'draft' => 'Borradores',
-      'published' => 'Publicados',
-      'cancelled' => 'Cancelados',
-      _ => 'Todos',
+      'draft' => _S.drafts,
+      'published' => _S.published,
+      'cancelled' => _S.cancelled,
+      _ => _S.all,
     };
-    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final wide =
+        MediaQuery.sizeOf(context).width >= CatalogConfig.wideBreakpoint;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1120),
+            constraints:
+                const BoxConstraints(maxWidth: CatalogConfig.maxContentWidth),
             child: RefreshIndicator(
               onRefresh: () async {
                 _refresh();
@@ -266,7 +284,7 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'Mis lotes',
+                                      _S.title,
                                       style: Theme.of(context)
                                           .textTheme
                                           .headlineMedium
@@ -278,8 +296,8 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
                                     const SizedBox(height: 6),
                                     Text(
                                       isSeller
-                                          ? 'Crea, publica y mantén al día tu oferta.'
-                                          : 'Aquí puedes consultar los lotes de tu cuenta.',
+                                          ? _S.sellerSubtitle
+                                          : _S.buyerSubtitle,
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodyMedium
@@ -296,7 +314,7 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
                                 FilledButton.icon(
                                   onPressed: () => context.go('/lotes/nuevo'),
                                   icon: const Icon(Icons.add_rounded),
-                                  label: const Text('Nuevo lote'),
+                                  label: const Text(_S.newLot),
                                 ),
                               ],
                             ],
@@ -308,13 +326,13 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
                               child: FilledButton.icon(
                                 onPressed: () => context.go('/lotes/nuevo'),
                                 icon: const Icon(Icons.add_rounded),
-                                label: const Text('Nuevo lote'),
+                                label: const Text(_S.newLot),
                               ),
                             ),
                           ],
                           if (isSeller) ...[
                             const SizedBox(height: 12),
-                            Text('Ordenar por modificación',
+                            Text(_S.sortByChange,
                                 style: Theme.of(context)
                                     .textTheme
                                     .labelLarge
@@ -328,11 +346,11 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
                                   ButtonSegment(
                                       value: true,
                                       icon: Icon(Icons.south_rounded),
-                                      label: Text('Recientes')),
+                                      label: Text(_S.newest)),
                                   ButtonSegment(
                                       value: false,
                                       icon: Icon(Icons.north_rounded),
-                                      label: Text('Antiguos')),
+                                      label: Text(_S.oldest)),
                                 ],
                                 selected: {_sortNewestFirst},
                                 onSelectionChanged: (selection) => setState(
@@ -344,6 +362,17 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
                             const SizedBox(height: 16),
                             const _OfflineNotice(),
                           ],
+                          // Progreso visible mientras se publica o cancela.
+                          AnimatedSwitcher(
+                            duration: AppMotion.of(context, AppMotion.fast),
+                            child: _busy
+                                ? const Padding(
+                                    padding: EdgeInsets.only(top: 12),
+                                    child: LinearProgressIndicator(
+                                        semanticsLabel: _S.working),
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
                         ],
                       ),
                     ),
@@ -364,9 +393,9 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
                         padding: EdgeInsets.fromLTRB(
                             wide ? 40 : 20, 14, wide ? 40 : 20, 4),
                         child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 240),
+                          duration: AppMotion.of(context, AppMotion.fast),
                           child: Text(
-                              '$filterLabel · ${visibleLots.length} ${visibleLots.length == 1 ? 'lote' : 'lotes'}',
+                              _S.heading(filterLabel, visibleLots.length),
                               key: ValueKey(
                                   'filter-heading-$_statusFilter-${visibleLots.length}'),
                               style: Theme.of(context)
@@ -417,9 +446,10 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
                         separatorBuilder: (_, __) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
                           final lot = visibleLots[index];
-                          final canSwipe = lot.status == 'draft' ||
-                              lot.status == 'published' ||
-                              lot.status == 'reserved';
+                          final canSwipe = !_busy &&
+                              (lot.status == 'draft' ||
+                                  lot.status == 'published' ||
+                                  lot.status == 'reserved');
                           return Dismissible(
                             key: ValueKey(
                                 'swipe-${_statusFilter ?? 'all'}-${lot.id}'),
@@ -429,12 +459,12 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
                                     ? DismissDirection.endToStart
                                     : DismissDirection.startToEnd,
                             background: const _SwipeHint(
-                                label: 'Cancelar',
+                                label: _S.cancel,
                                 icon: Icons.cancel_outlined,
-                                color: Color(0xFFC75B58),
+                                color: AppTheme.danger,
                                 alignment: Alignment.centerLeft),
                             secondaryBackground: const _SwipeHint(
-                                label: 'Publicar',
+                                label: _S.publish,
                                 icon: Icons.publish_rounded,
                                 color: AppTheme.primary,
                                 alignment: Alignment.centerRight),
@@ -447,13 +477,13 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
                               return false;
                             },
                             child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 280),
+                              duration: AppMotion.of(context, AppMotion.medium),
                               child: _LotCard(
                                 key: ValueKey(
                                     '${_statusFilter ?? 'all'}-${lot.id}'),
                                 lot: lot,
-                                productName:
-                                    productNames[lot.productId] ?? 'Producto',
+                                productName: productNames[lot.productId] ??
+                                    LotStrings.productFallback,
                                 busy: _busy,
                                 onOpen: () => context.go('/lots/${lot.id}'),
                                 onEdit: () =>
@@ -561,17 +591,20 @@ class _LotCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final status = _statusStyle(lot.status);
-    final price = NumberFormat.currency(
-      locale: 'es_CO',
-      symbol: r'$ ',
-      decimalDigits: 0,
-    ).format(int.tryParse(lot.unitPrice) ?? 0);
-    final dateRange =
-        '${DateFormat('d MMM', 'es_CO').format(lot.availableFrom.toLocal())}'
-        ' – ${DateFormat('d MMM y', 'es_CO').format(lot.availableUntil.toLocal())}';
+    final price = AppFormats.moneyText(lot.unitPrice);
+    final dateRange = LotStrings.dateRange(
+        AppFormats.dayMonth(lot.availableFrom),
+        AppFormats.dayMonthYear(lot.availableUntil));
+    final quantity =
+        LotStrings.quantity(formatQuantityMilli(lot.quantityMilli), lot.unit);
+    final summary = '$quantity · ${LotStrings.pricePer(price, lot.unit)}';
+    final mutedStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: AppTheme.ink.withValues(alpha: .72),
+          fontSize: 14,
+        );
 
     final front = Material(
-      color: Colors.white,
+      color: AppTheme.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(22),
         side: const BorderSide(color: AppTheme.outline),
@@ -601,19 +634,16 @@ class _LotCard extends StatelessWidget {
                             ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        '${formatQuantityMilli(lot.quantityMilli)} ${lot.unit}'
-                        ' · $price por ${lot.unit}',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: AppTheme.ink.withValues(alpha: .72),
-                              fontSize: 14,
-                            ),
-                      ),
+                      Text(summary, style: mutedStyle),
                     ],
                   ),
                 ),
                 const SizedBox(width: 12),
-                _StatusBadge(status: status),
+                Padding(
+                  // Deja espacio al icono de voltear.
+                  padding: const EdgeInsets.only(right: 32),
+                  child: _StatusBadge(status: status),
+                ),
               ],
             ),
             const SizedBox(height: 10),
@@ -623,14 +653,7 @@ class _LotCard extends StatelessWidget {
                     size: 18, color: AppTheme.mutedText),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    'Disponible $dateRange',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppTheme.ink.withValues(alpha: .72),
-                          fontSize: 14,
-                        ),
-                  ),
-                ),
+                    child: Text(_S.available(dateRange), style: mutedStyle)),
               ],
             ),
             if (lot.qualityGrade?.isNotEmpty == true) ...[
@@ -645,10 +668,7 @@ class _LotCard extends StatelessWidget {
                       lot.qualityGrade!,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: AppTheme.ink.withValues(alpha: .72),
-                            fontSize: 14,
-                          ),
+                      style: mutedStyle,
                     ),
                   ),
                 ],
@@ -662,7 +682,7 @@ class _LotCard extends StatelessWidget {
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: IconButton.filledTonal(
-                      tooltip: 'Ver lote',
+                      tooltip: _S.view,
                       onPressed: busy ? null : onOpen,
                       icon: const Icon(Icons.visibility_outlined),
                     ),
@@ -672,7 +692,7 @@ class _LotCard extends StatelessWidget {
                   Expanded(
                     child: Center(
                       child: IconButton.filledTonal(
-                        tooltip: 'Editar lote',
+                        tooltip: _S.edit,
                         onPressed: busy ? null : onEdit,
                         icon: const Icon(Icons.edit_outlined),
                       ),
@@ -682,7 +702,7 @@ class _LotCard extends StatelessWidget {
                     child: Align(
                       alignment: Alignment.centerRight,
                       child: IconButton.filled(
-                        tooltip: 'Publicar lote',
+                        tooltip: _S.publishTitle,
                         onPressed: busy ? null : onPublish,
                         icon: const Icon(Icons.publish_rounded),
                       ),
@@ -693,10 +713,10 @@ class _LotCard extends StatelessWidget {
                   Expanded(
                     child: Center(
                       child: IconButton(
-                        tooltip: 'Cancelar lote',
+                        tooltip: _S.cancelTitle,
                         onPressed: busy ? null : onCancel,
                         style: IconButton.styleFrom(
-                          foregroundColor: const Color(0xFFB3261E),
+                          foregroundColor: AppTheme.dangerStrong,
                         ),
                         icon: const Icon(Icons.cancel_outlined),
                       ),
@@ -715,40 +735,40 @@ class _LotCard extends StatelessWidget {
       color: AppTheme.mint,
       padding: const EdgeInsets.all(18),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('$productName · Detalles',
+        Text(LotStrings.detailsTitle(productName),
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: AppTheme.forest, fontWeight: FontWeight.w700)),
         const SizedBox(height: 10),
-        Text(
-            'Calidad: ${lot.qualityGrade?.isNotEmpty == true ? lot.qualityGrade : 'No especificada'}'),
-        Text('Disponibilidad: $dateRange'),
-        Text(
-            '${formatQuantityMilli(lot.quantityMilli)} ${lot.unit} · $price por ${lot.unit}'),
+        Text(LotStrings.quality(lot.qualityGrade?.isNotEmpty == true
+            ? lot.qualityGrade!
+            : LotStrings.noQuality)),
+        Text(_S.availability(dateRange)),
+        Text(summary),
         const SizedBox(height: 14),
         Wrap(spacing: 8, children: [
           OutlinedButton.icon(
               onPressed: onOpen,
               icon: const Icon(Icons.open_in_new),
-              label: const Text('Ver')),
+              label: const Text(_S.viewShort)),
           if (lot.status == 'published' || lot.status == 'reserved')
             TextButton.icon(
                 onPressed: busy ? null : onCancel,
                 icon: const Icon(Icons.cancel_outlined),
-                label: const Text('Cancelar')),
+                label: const Text(_S.cancel)),
           if (lot.status == 'draft')
             FilledButton.tonal(
                 onPressed: busy ? null : onPublish,
-                child: const Text('Publicar')),
+                child: const Text(_S.publish)),
           if (lot.status == 'draft')
             IconButton(
-                tooltip: 'Eliminar borrador',
+                tooltip: _S.deleteTitle,
                 onPressed: busy ? null : onDelete,
-                color: const Color(0xFFB3261E),
+                color: AppTheme.dangerStrong,
                 icon: const Icon(Icons.delete_outline)),
         ]),
         const Align(
             alignment: Alignment.centerRight,
-            child: Text('Toca para volver',
+            child: Text(LotStrings.tapToFlipBack,
                 style: TextStyle(fontSize: 12, color: AppTheme.mutedText))),
       ]),
     );
@@ -779,44 +799,31 @@ class _StatusBadge extends StatelessWidget {
 }
 
 ({String label, Color foreground, Color background}) _statusStyle(
-        String status) =>
-    switch (status) {
-      'published' => (
-          label: 'Publicado',
-          foreground: AppTheme.forest,
-          background: AppTheme.mint,
-        ),
-      'draft' => (
-          label: 'Borrador',
-          foreground: const Color(0xFF704E00),
-          background: const Color(0xFFFFF3CD),
-        ),
-      'reserved' => (
-          label: 'Reservado',
-          foreground: const Color(0xFF0D47A1),
-          background: const Color(0xFFE3F2FD),
-        ),
-      'sold_out' => (
-          label: 'Agotado',
-          foreground: AppTheme.mutedText,
-          background: const Color(0xFFF3F4F6),
-        ),
-      'cancelled' => (
-          label: 'Cancelado',
-          foreground: AppTheme.mutedText,
-          background: const Color(0xFFF3F4F6),
-        ),
-      'expired' => (
-          label: 'Vencido',
-          foreground: AppTheme.mutedText,
-          background: const Color(0xFFF3F4F6),
-        ),
-      _ => (
-          label: status,
-          foreground: AppTheme.mutedText,
-          background: const Color(0xFFF3F4F6),
-        ),
-    };
+    String status) {
+  final label = LotStatusStrings.owner(status);
+  return switch (status) {
+    'published' => (
+        label: label,
+        foreground: AppTheme.forest,
+        background: AppTheme.mint,
+      ),
+    'draft' => (
+        label: label,
+        foreground: AppTheme.warningIcon,
+        background: AppTheme.warningSurface,
+      ),
+    'reserved' => (
+        label: label,
+        foreground: AppTheme.infoText,
+        background: AppTheme.infoSurface,
+      ),
+    _ => (
+        label: label,
+        foreground: AppTheme.mutedText,
+        background: AppTheme.neutralSurface,
+      ),
+  };
+}
 
 class _OfflineNotice extends StatelessWidget {
   const _OfflineNotice();
@@ -826,19 +833,19 @@ class _OfflineNotice extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 52),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF3CD),
+          color: AppTheme.warningSurface,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
           children: [
             const Icon(Icons.cloud_off_outlined,
-                color: Color(0xFF704E00), size: 20),
+                color: AppTheme.warningIcon, size: 20),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Sin conexión. Puedes revisar tus lotes guardados; para publicar, cancelar o eliminar necesitas señal.',
+                _S.offline,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF553B00),
+                      color: AppTheme.warningText,
                       fontSize: 14,
                     ),
               ),
@@ -848,9 +855,21 @@ class _OfflineNotice extends StatelessWidget {
       );
 }
 
-class _NonSellerState extends StatelessWidget {
-  const _NonSellerState({required this.onSearch});
-  final VoidCallback onSearch;
+// Estado centrado con icono, titulo, texto y acciones.
+class _MessageState extends StatelessWidget {
+  const _MessageState({
+    required this.icon,
+    required this.title,
+    required this.body,
+    required this.actions,
+    this.iconColor = AppTheme.primary,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String body;
+  final List<Widget> actions;
 
   @override
   Widget build(BuildContext context) => Center(
@@ -859,11 +878,10 @@ class _NonSellerState extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.storefront_outlined,
-                  size: 48, color: AppTheme.primary),
+              Icon(icon, size: 48, color: iconColor),
               const SizedBox(height: 16),
               Text(
-                'Solo productores y proveedores pueden publicar lotes.',
+                title,
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       color: AppTheme.forest,
@@ -872,19 +890,34 @@ class _NonSellerState extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Explora la oferta disponible desde la búsqueda.',
+                body,
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: onSearch,
-                icon: const Icon(Icons.search),
-                label: const Text('Buscar lotes'),
-              ),
+              ...actions,
             ],
           ),
         ),
+      );
+}
+
+class _NonSellerState extends StatelessWidget {
+  const _NonSellerState({required this.onSearch});
+  final VoidCallback onSearch;
+
+  @override
+  Widget build(BuildContext context) => _MessageState(
+        icon: Icons.storefront_outlined,
+        title: _S.onlySellers,
+        body: _S.exploreOffer,
+        actions: [
+          FilledButton.icon(
+            onPressed: onSearch,
+            icon: const Icon(Icons.search),
+            label: const Text(_S.searchLots),
+          ),
+        ],
       );
 }
 
@@ -900,55 +933,28 @@ class _EmptyState extends StatelessWidget {
   final VoidCallback onClearFilter;
 
   @override
-  Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                filtered
-                    ? Icons.filter_alt_off_outlined
-                    : Icons.inventory_2_outlined,
-                size: 48,
-                color: AppTheme.primary,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                filtered
-                    ? 'No hay lotes en este estado.'
-                    : 'Aún no tienes lotes.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: AppTheme.forest,
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                filtered
-                    ? 'Prueba con otro filtro para ver tus lotes.'
-                    : 'Publica tu cosecha y aparece en la búsqueda de compradores.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 20),
-              if (filtered) ...[
+  Widget build(BuildContext context) => _MessageState(
+        icon: filtered
+            ? Icons.filter_alt_off_outlined
+            : Icons.inventory_2_outlined,
+        title: filtered ? _S.emptyFiltered : _S.empty,
+        body: filtered ? _S.emptyFilteredBody : _S.emptyBody,
+        actions: filtered
+            ? [
                 OutlinedButton.icon(
                   onPressed: onCreate,
                   icon: const Icon(Icons.add_rounded),
-                  label: const Text('Crear lote'),
+                  label: const Text(_S.createLot),
                 ),
                 TextButton(
-                    onPressed: onClearFilter, child: const Text('Ver todos')),
-              ] else
+                    onPressed: onClearFilter, child: const Text(_S.seeAll)),
+              ]
+            : [
                 FilledButton.icon(
                     onPressed: onCreate,
                     icon: const Icon(Icons.add_rounded),
-                    label: const Text('Publicar mi primer lote')),
-            ],
-          ),
-        ),
+                    label: const Text(_S.firstLot)),
+              ],
       );
 }
 
@@ -957,50 +963,39 @@ class _ErrorState extends StatelessWidget {
   final VoidCallback onRetry;
 
   @override
-  Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.cloud_off_outlined,
-                  size: 48, color: AppTheme.mutedText),
-              const SizedBox(height: 16),
-              Text(
-                'No pudimos cargar tus lotes.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: AppTheme.forest,
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Revisa tu conexión e intenta de nuevo.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 20),
-              FilledButton.tonalIcon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Reintentar'),
-              ),
-            ],
+  Widget build(BuildContext context) => _MessageState(
+        icon: Icons.cloud_off_outlined,
+        iconColor: AppTheme.mutedText,
+        title: _S.loadError,
+        body: _S.loadErrorBody,
+        actions: [
+          FilledButton.tonalIcon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text(CommonStrings.retry),
           ),
-        ),
+        ],
       );
 }
 
 class _LotSkeleton extends StatelessWidget {
   const _LotSkeleton();
 
+  Widget _bar(double width, double alpha) => Container(
+        width: width,
+        height: 14,
+        decoration: BoxDecoration(
+          color: AppTheme.outline.withValues(alpha: alpha),
+          borderRadius: BorderRadius.circular(8),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) => Container(
         height: 142,
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppTheme.white,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: AppTheme.outline),
         ),
@@ -1008,32 +1003,11 @@ class _LotSkeleton extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 180,
-              height: 18,
-              decoration: BoxDecoration(
-                color: AppTheme.outline,
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
+            _bar(180, 1),
             const SizedBox(height: 12),
-            Container(
-              width: 240,
-              height: 14,
-              decoration: BoxDecoration(
-                color: AppTheme.outline.withValues(alpha: .7),
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
+            _bar(240, .7),
             const SizedBox(height: 24),
-            Container(
-              width: 160,
-              height: 14,
-              decoration: BoxDecoration(
-                color: AppTheme.outline.withValues(alpha: .5),
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
+            _bar(160, .5),
           ],
         ),
       );

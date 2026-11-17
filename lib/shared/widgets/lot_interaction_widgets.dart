@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/theme.dart';
+import '../../core/i18n/strings.dart';
 
 class AnimatedCounter extends StatelessWidget {
   const AnimatedCounter(
@@ -38,15 +39,25 @@ class StatusFilterGrid extends StatelessWidget {
   final bool compact;
 
   static const _filters = <(String?, String, IconData, Color)>[
-    (null, 'Todos', Icons.grid_view_rounded, AppTheme.forest),
-    ('draft', 'Borradores', Icons.edit_note_rounded, Color(0xFF707A71)),
+    (null, MyLotsStrings.all, Icons.grid_view_rounded, AppTheme.forest),
+    (
+      'draft',
+      MyLotsStrings.drafts,
+      Icons.edit_note_rounded,
+      AppTheme.draftAccent
+    ),
     (
       'published',
-      'Publicados',
+      MyLotsStrings.published,
       Icons.check_circle_outline_rounded,
       AppTheme.primary
     ),
-    ('cancelled', 'Cancelados', Icons.cancel_outlined, Color(0xFFC75B58)),
+    (
+      'cancelled',
+      MyLotsStrings.cancelled,
+      Icons.cancel_outlined,
+      AppTheme.danger
+    ),
   ];
 
   @override
