@@ -38,26 +38,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => const Scaffold(
         backgroundColor: AppTheme.background,
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const LeafSplashAnimation(size: 84),
-              const SizedBox(height: 16),
-              Text(
-                'TRACOP',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: AppTheme.forest,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 19,
-                      letterSpacing: 3.04,
-                    ),
-              ),
-            ],
-          ),
-        ),
+        body: Center(child: LeafSplashAnimation(size: 132)),
       );
 }
 

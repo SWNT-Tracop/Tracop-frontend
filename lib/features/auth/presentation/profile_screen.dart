@@ -26,7 +26,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   User? _user;
   UpsertProviderProfileRequest? _providerProfile;
   bool _loading = true, _saving = false, _loggingOut = false;
-  bool _whatsAppNotices = true,
+  bool _telegramNotices = true,
       _smsNotices = true,
       _localPreferencesChanged = false;
   String? _error;
@@ -290,10 +290,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 children: [
                   SwitchListTile(
                       secondary: const Icon(Icons.chat_outlined),
-                      title: const Text(ProfileStrings.whatsapp),
-                      value: _whatsAppNotices,
+                      title: const Text(ProfileStrings.telegram),
+                      value: _telegramNotices,
                       onChanged: (value) => setState(() {
-                            _whatsAppNotices = value;
+                            _telegramNotices = value;
                             _localPreferencesChanged = true;
                           })),
                   SwitchListTile(

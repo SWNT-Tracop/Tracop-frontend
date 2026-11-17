@@ -20,7 +20,7 @@ Encontrar, comparar y gestionar productos del campo, tan simple como debería se
 
 ## El campo, sin intermediarios innecesarios
 
-TRACOP es la aplicación para productores, proveedores y compradores del campo colombiano. Reúne la oferta que hoy vive dispersa en WhatsApp, redes sociales e intermediarios, y la convierte en un catálogo claro para descubrir, comparar y gestionar lotes desde el celular.
+TRACOP es la aplicación para productores, proveedores y compradores del campo colombiano. Reúne la oferta que hoy vive dispersa en Telegram, redes sociales e intermediarios, y la convierte en un catálogo claro para descubrir, comparar y gestionar lotes desde el celular.
 
 La app está pensada para la realidad del campo: conectividad inestable, poco tiempo y procesos que deben resolverse en pocos toques.
 

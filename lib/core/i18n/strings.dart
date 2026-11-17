@@ -91,7 +91,7 @@ abstract final class ProfileStrings {
   static const sectionPreferences = 'Preferencias';
   static const sectionHelp = 'Ayuda y soporte';
   static const sectionAbout = 'Acerca de';
-  static const whatsapp = 'Avisos por WhatsApp';
+  static const telegram = 'Avisos por Telegram';
   static const sms = 'Avisos por SMS';
   static const preferencesNote =
       'Estas preferencias solo se mantienen durante esta sesión; aún no se sincronizan.';
