@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import '../core/i18n/strings.dart';
 import '../features/home/presentation/home_screen.dart';
+import 'back_guard.dart';
 import 'messenger.dart';
 import 'theme.dart';
 
@@ -97,8 +98,9 @@ class ResponsiveShell extends ConsumerWidget {
 
     return PopScope(
       canPop: backTarget == null || router!.canPop(),
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && backTarget != null) context.go(backTarget);
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop || backTarget == null) return;
+        await _guardedGo(context, backTarget);
       },
       child: LayoutBuilder(builder: (context, constraints) {
         final width = constraints.maxWidth;
@@ -140,7 +142,7 @@ class ResponsiveShell extends ConsumerWidget {
                 Tooltip(
                   message: NavStrings.profileTooltip(displayName),
                   child: InkWell(
-                    onTap: () => context.go('/perfil'),
+                    onTap: () => _guardedGo(context, '/perfil'),
                     borderRadius: BorderRadius.circular(24),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -163,7 +165,7 @@ class ResponsiveShell extends ConsumerWidget {
             bottomNavigationBar: NavigationBar(
               selectedIndex: _selectedIndex,
               onDestinationSelected: (index) =>
-                  context.go(_destinations[index].path),
+                  _guardedGo(context, _destinations[index].path),
               destinations: [
                 for (final item in _destinations)
                   NavigationDestination(
@@ -181,7 +183,7 @@ class ResponsiveShell extends ConsumerWidget {
               minExtendedWidth: 224,
               selectedIndex: _selectedIndex,
               onDestinationSelected: (index) =>
-                  context.go(_destinations[index].path),
+                  _guardedGo(context, _destinations[index].path),
               leading: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 24),
                 child: expanded
@@ -225,7 +227,7 @@ class ResponsiveShell extends ConsumerWidget {
                       label: syncLabel, icon: syncIcon, color: syncColor),
                   const SizedBox(width: 18),
                   InkWell(
-                    onTap: () => context.go('/perfil'),
+                    onTap: () => _guardedGo(context, '/perfil'),
                     borderRadius: BorderRadius.circular(22),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -292,4 +294,11 @@ class _SyncBadge extends StatelessWidget {
                   ?.copyWith(color: color, fontSize: 14)),
         ]),
       );
+}
+
+// Navega desde el shell respetando el aviso de cambios sin guardar.
+Future<void> _guardedGo(BuildContext context, String path) async {
+  final guard = backGuard.value;
+  if (guard != null && !await guard()) return;
+  if (context.mounted) context.go(path);
 }

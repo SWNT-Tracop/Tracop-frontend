@@ -273,6 +273,18 @@ abstract final class MyLotsStrings {
   static const loadErrorBody = 'Revisa tu conexión e intenta de nuevo.';
 }
 
+abstract final class LotFormStrings {
+  static const leaveTitle = '¿Salir sin guardar?';
+  static const leaveBody =
+      'Los cambios de este lote se perderán. Puedes guardarlo como borrador para seguir después.';
+  static const keepEditing = 'Seguir editando';
+  static const leave = 'Salir';
+  static const useProfilePoint = 'Usar el punto de recogida de mi perfil';
+  static const profilePointUsed =
+      'Tomamos el punto de recogida de tu perfil. Puedes cambiarlo si este lote sale de otro lugar.';
+  static const completeProfile = 'Completar perfil';
+}
+
 abstract final class LotDetailStrings {
   static const title = 'Detalle del lote';
   static const back = 'Volver';
