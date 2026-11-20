@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../domain/entities/auth_session.dart';
 import '../../domain/entities/user.dart';
+import '../../domain/entities/saved_account.dart';
 import '../../domain/repository/auth_repository.dart';
 import '../../../../core/result/result.dart';
 
@@ -48,6 +49,64 @@ class AuthNotifier extends StateNotifier<AsyncValue<AuthSession?>> {
   bool get isAuthenticated => state.valueOrNull?.accessToken.isNotEmpty == true;
 
   Future<String> getDeviceId() => _repo.getDeviceId();
+
+  Future<String> getDeviceIdForPhone(String phone) =>
+      _repo is LocalAccountRepository
+          ? (_repo as LocalAccountRepository).getDeviceIdForPhone(phone)
+          : _repo.getDeviceId();
+
+  Future<List<SavedAccount>> getSavedAccounts() =>
+      _repo is LocalAccountRepository
+          ? (_repo as LocalAccountRepository).getSavedAccounts()
+          : Future.value(const []);
+
+  Future<Result<AuthSession, DomainFailure>> activateSavedAccount(
+      String userId) async {
+    if (_repo is! LocalAccountRepository) {
+      return const Err(DomainFailure(
+        statusCode: 501,
+        code: 'multi_account_unavailable',
+        message: 'El selector de cuentas no está disponible.',
+      ));
+    }
+    final network = await Connectivity().checkConnectivity();
+    final localRepo = _repo as LocalAccountRepository;
+    if (!network.any((result) => result != ConnectivityResult.none)) {
+      final user = await localRepo.activateSavedAccountOffline(userId);
+      if (user == null) {
+        return const Err(DomainFailure(
+          statusCode: 404,
+          code: 'saved_account_missing',
+          message: 'No encontramos los datos guardados de esta cuenta.',
+        ));
+      }
+      offlineAuthenticated = true;
+      state = const AsyncValue.data(null);
+      return const Err(DomainFailure(
+        statusCode: 0,
+        code: 'offline_account_activated',
+        message: 'Cuenta activada sin conexión.',
+      ));
+    }
+    final previous = state;
+    final result = await localRepo.activateSavedAccount(userId);
+    if (result is Ok<AuthSession, DomainFailure>) {
+      offlineAuthenticated = false;
+      state = AsyncValue.data(result.value);
+      return result;
+    }
+    state = previous;
+    return result;
+  }
+
+  Future<void> removeSavedAccount(String userId) async {
+    if (_repo is! LocalAccountRepository) return;
+    await (_repo as LocalAccountRepository).removeSavedAccount(userId);
+    if (state.valueOrNull?.user.id == userId || offlineAuthenticated) {
+      state = const AsyncValue.data(null);
+      offlineAuthenticated = false;
+    }
+  }
 
   Future<void> register(RegisterRequest request) async {
     state = const AsyncValue.loading();

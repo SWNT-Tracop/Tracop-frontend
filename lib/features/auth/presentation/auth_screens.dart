@@ -169,7 +169,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       _busy = true;
       _error = null;
     });
-    final deviceId = await ref.read(authProvider.notifier).getDeviceId();
+    final deviceId = await ref
+        .read(authProvider.notifier)
+        .getDeviceIdForPhone(_normalizePhone(_phone.text));
     final result = await ref.read(authRepositoryProvider).register(
         RegisterRequest(
             phone: _normalizePhone(_phone.text),
@@ -292,7 +294,8 @@ class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
       _busy = true;
       _error = null;
     });
-    final id = await ref.read(authProvider.notifier).getDeviceId();
+    final id =
+        await ref.read(authProvider.notifier).getDeviceIdForPhone(widget.phone);
     await ref.read(authProvider.notifier).verifyOtp(VerifyOtpRequest(
         phone: widget.phone,
         code: _code.text,

@@ -103,6 +103,19 @@ abstract final class ProfileStrings {
   static const supportBody = 'Estamos preparando este canal de atención.';
   static const appName = 'TRACOP';
   static const tagline = 'Conectamos el campo con quienes lo necesitan';
+  static const localAccounts = 'Cuentas de prueba en este dispositivo';
+  static const localAccountsHint =
+      'Cambia entre cuentas registradas con números diferentes.';
+  static const addLocalAccount = 'Agregar otra cuenta';
+  static const savedAccounts = 'Cuentas guardadas';
+  static const removeLocalAccount = 'Quitar del dispositivo';
+  static const removeLocalAccountTitle = 'QUITAR CUENTA';
+  static const removeLocalAccountBody =
+      'Se eliminará la sesión guardada de este dispositivo. La cuenta seguirá activa.';
+  static const accountRemoved = 'Cuenta quitada de este dispositivo.';
+  static const accountSwitched = 'Cuenta cambiada.';
+  static const localMultiAccountOnly =
+      'Disponible solo en modo debug con la opción local activada.';
 
   static const online = 'Conectado';
   static const onlineBody = 'Tus cambios se guardan al confirmar.';
