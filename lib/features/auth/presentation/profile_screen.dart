@@ -18,7 +18,11 @@ import '../../home/presentation/home_screen.dart'
 import '../../catalog/presentation/providers/lot_management_provider.dart'
     show localLotModifiedAtProvider, lotByIdProvider, myLotsProvider;
 import '../../ordering/presentation/providers/order_provider.dart'
-    show incomingOrdersProvider, myOrdersProvider, orderDetailProvider;
+    show
+        incomingOrdersProvider,
+        myOrdersProvider,
+        orderDetailProvider,
+        orderLotsProvider;
 import '../domain/entities/auth_session.dart';
 import '../domain/entities/user.dart';
 import 'providers/auth_provider.dart';
@@ -127,6 +131,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     ref.invalidate(myOrdersProvider);
     ref.invalidate(incomingOrdersProvider);
     ref.invalidate(orderDetailProvider);
+    ref.invalidate(orderLotsProvider);
   }
 
   Future<void> _logout(bool offline) async {

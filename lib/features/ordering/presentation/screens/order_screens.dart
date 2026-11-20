@@ -10,7 +10,6 @@ import '../../../../core/result/result.dart';
 import '../../../../features/catalog/domain/entities/lot.dart'
     hide Category, Product;
 import '../../../../features/catalog/domain/lot_quantity.dart';
-import '../../../../features/catalog/presentation/providers/catalog_provider.dart';
 import '../../../../features/catalog/presentation/providers/lot_management_provider.dart'
     show catalogProductsProvider;
 import '../../../../features/home/presentation/home_screen.dart';
@@ -283,15 +282,9 @@ class _IncomingOrdersScreenState extends ConsumerState<IncomingOrdersScreen> {
       );
 }
 
-final _orderLotsProvider = FutureProvider<List<Lot>>((ref) async {
-  final result =
-      await ref.read(catalogRepositoryProvider).searchLots(limit: 100);
-  return result.map(
-      ok: (value) => value.value.items, err: (failure) => throw failure.error);
-});
-
 class OrderCheckoutScreen extends ConsumerStatefulWidget {
-  const OrderCheckoutScreen({super.key});
+  const OrderCheckoutScreen({super.key, this.initialLot});
+  final Lot? initialLot;
   @override
   ConsumerState<OrderCheckoutScreen> createState() =>
       _OrderCheckoutScreenState();
@@ -305,6 +298,16 @@ class _OrderCheckoutScreenState extends ConsumerState<OrderCheckoutScreen> {
   bool _submitting = false;
   String? _addressError;
   String? _lineError;
+
+  @override
+  void initState() {
+    super.initState();
+    final lot = widget.initialLot;
+    if (lot != null && !lot.isMine) {
+      _selectedLots[lot.id] = lot;
+      _quantities[lot.id] = TextEditingController(text: '1');
+    }
+  }
 
   @override
   void dispose() {
@@ -401,7 +404,7 @@ class _OrderCheckoutScreenState extends ConsumerState<OrderCheckoutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final lotsAsync = ref.watch(_orderLotsProvider);
+    final lotsAsync = ref.watch(orderLotsProvider);
     final products = ref.watch(catalogProductsProvider).valueOrNull ?? const [];
     final connectivity = ref.watch(homeConnectivityProvider).valueOrNull;
     final online = connectivity == true;
@@ -420,8 +423,21 @@ class _OrderCheckoutScreenState extends ConsumerState<OrderCheckoutScreen> {
             const SizedBox(height: 8),
             lotsAsync.when(
               loading: () => const LinearProgressIndicator(),
-              error: (_, __) => const Text(
-                  'No se pudieron cargar los lotes. Intenta de nuevo.'),
+              error: (error, _) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('No se pudieron cargar los lotes.'),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => ref.invalidate(orderLotsProvider),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Intentar de nuevo'),
+                  ),
+                  if (error is DomainFailure && error.code != 'unknown')
+                    Text('Detalle: ${error.code}',
+                        style: Theme.of(context).textTheme.bodySmall),
+                ],
+              ),
               data: (lots) {
                 final options = lots
                     .where((lot) => !_selectedLots.containsKey(lot.id))

@@ -10,6 +10,7 @@ import '../features/auth/presentation/profile_screen.dart';
 import '../features/auth/presentation/provider_profile_screen.dart';
 import '../features/auth/presentation/providers/auth_provider.dart';
 import '../features/catalog/presentation/catalog_search_screen.dart';
+import '../features/catalog/domain/entities/lot.dart' hide Category, Product;
 import '../features/catalog/presentation/lot_detail_screen.dart';
 import '../features/catalog/presentation/lot_form_screen.dart';
 import '../features/catalog/presentation/my_lots_screen.dart';
@@ -96,9 +97,11 @@ final router = GoRouter(
           pageBuilder: (context, state) => _orderRoutePage(
             context,
             state,
-            const OrderRoleGate(
-              roles: {'buyer'},
-              child: OrderCheckoutScreen(),
+            OrderRoleGate(
+              roles: const {'buyer'},
+              child: OrderCheckoutScreen(
+                initialLot: state.extra is Lot ? state.extra as Lot : null,
+              ),
             ),
           ),
         ),

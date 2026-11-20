@@ -187,6 +187,18 @@ class LotDetailScreen extends ConsumerWidget {
                             .textTheme
                             .bodyMedium
                             ?.copyWith(color: AppTheme.mutedText)),
+                    if (role == 'buyer' && !item.isMine) ...[
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        height: 52,
+                        child: FilledButton.icon(
+                          onPressed: () =>
+                              context.push('/pedidos/nuevo', extra: item),
+                          icon: const Icon(Icons.shopping_bag_outlined),
+                          label: const Text('Comprar este lote'),
+                        ),
+                      ),
+                    ],
                   ],
                 );
               },
