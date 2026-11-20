@@ -13,6 +13,7 @@ import '../features/catalog/presentation/catalog_search_screen.dart';
 import '../features/catalog/presentation/lot_detail_screen.dart';
 import '../features/catalog/presentation/lot_form_screen.dart';
 import '../features/catalog/presentation/my_lots_screen.dart';
+import '../features/ordering/presentation/screens/order_screens.dart';
 import '../core/config/env.dart';
 import '../core/i18n/strings.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -90,6 +91,47 @@ final router = GoRouter(
                   state,
                   LotDetailScreen(lotId: state.pathParameters['id']!),
                 )),
+        GoRoute(
+          path: '/pedidos/nuevo',
+          pageBuilder: (context, state) => _orderRoutePage(
+            context,
+            state,
+            const OrderRoleGate(
+              roles: {'buyer'},
+              child: OrderCheckoutScreen(),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/pedidos/mis-pedidos',
+          pageBuilder: (context, state) => _orderRoutePage(
+            context,
+            state,
+            const OrderRoleGate(roles: {'buyer'}, child: MyOrdersScreen()),
+          ),
+        ),
+        GoRoute(
+          path: '/pedidos/entrantes',
+          pageBuilder: (context, state) => _orderRoutePage(
+            context,
+            state,
+            const OrderRoleGate(
+              roles: {'supplier'},
+              child: IncomingOrdersScreen(),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/pedidos/:id',
+          pageBuilder: (context, state) => _orderRoutePage(
+            context,
+            state,
+            OrderRoleGate(
+              roles: const {'buyer', 'supplier'},
+              child: OrderDetailScreen(orderId: state.pathParameters['id']!),
+            ),
+          ),
+        ),
         GoRoute(
             path: '/perfil',
             pageBuilder: (context, state) =>
@@ -208,6 +250,31 @@ Page<void> _routePage(BuildContext context, GoRouterState state, Widget child) {
             ),
           );
         },
+      );
+    },
+  );
+}
+
+Page<void> _orderRoutePage(
+    BuildContext context, GoRouterState state, Widget child) {
+  if (MediaQuery.of(context).disableAnimations) {
+    return NoTransitionPage<void>(key: state.pageKey, child: child);
+  }
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: AppMotion.fast,
+    reverseTransitionDuration: AppMotion.fast,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final curved =
+          CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+      return FadeTransition(
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween<Offset>(begin: const Offset(.08, 0), end: Offset.zero)
+              .animate(curved),
+          child: child,
+        ),
       );
     },
   );
