@@ -614,6 +614,17 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
                     style: const TextStyle(
                         fontWeight: FontWeight.w700, color: AppTheme.forest))
             ]),
+            if (isBuyer && !lot.isMine) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => context.push('/pedidos/nuevo', extra: lot),
+                  icon: const Icon(Icons.shopping_bag_outlined),
+                  label: const Text('Comprar este lote'),
+                ),
+              ),
+            ],
           ])),
     );
     final detailBack = Container(

@@ -20,7 +20,8 @@ class ResponsiveShell extends ConsumerWidget {
   static const _compactBreakpoint = 600.0;
   static const _expandedBreakpoint = 1024.0;
 
-  static const _destinations = <({String path, String label, IconData icon})>[
+  static const _baseDestinations =
+      <({String path, String label, IconData icon})>[
     (path: '/', label: NavStrings.home, icon: Icons.home_outlined),
     (path: '/buscar', label: NavStrings.search, icon: Icons.search),
     (
@@ -31,20 +32,37 @@ class ResponsiveShell extends ConsumerWidget {
     (path: '/perfil', label: NavStrings.profile, icon: Icons.person_outline),
   ];
 
-  int get _selectedIndex {
-    if (currentLocation.startsWith('/lots/')) return 1;
-    final index = _destinations.indexWhere((item) =>
-        currentLocation == item.path ||
-        currentLocation.startsWith('${item.path}/'));
-    return index < 0 ? 0 : index;
-  }
-
-  // Atras en Android: vuelve a la seccion o al inicio en vez de cerrar la app.
-  String? get _backTarget {
-    if (currentLocation == '/') return null;
-    final section = _destinations[_selectedIndex].path;
-    return currentLocation == section ? '/' : section;
-  }
+  List<({String path, String label, IconData icon})> _destinationsFor(
+          String? role) =>
+      role == 'carrier'
+          ? const [
+              (
+                path: '/logistica',
+                label: 'Logística',
+                icon: Icons.local_shipping_outlined
+              ),
+              (
+                path: '/perfil',
+                label: NavStrings.profile,
+                icon: Icons.person_outline
+              ),
+            ]
+          : [
+              ..._baseDestinations.take(2),
+              if (role == 'buyer')
+                (
+                  path: '/pedidos/mis-pedidos',
+                  label: 'Pedidos',
+                  icon: Icons.receipt_long_outlined
+                ),
+              if (role == 'producer' || role == 'supplier')
+                (
+                  path: '/pedidos/entrantes',
+                  label: 'Pedidos',
+                  icon: Icons.inbox_outlined
+                ),
+              ..._baseDestinations.skip(2),
+            ];
 
   void _onConnectivityChange(
       AsyncValue<bool>? previous, AsyncValue<bool> next) {
@@ -58,6 +76,8 @@ class ResponsiveShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     ref.listen(homeConnectivityProvider, _onConnectivityChange);
     final user = ref.watch(homeUserProvider).valueOrNull;
+    final role = user?.role;
+    final destinations = _destinationsFor(role);
     final connectivity = ref.watch(homeConnectivityProvider);
     final lots = currentLocation == '/' ? ref.watch(homeLotsProvider) : null;
     final connected = connectivity.valueOrNull;
@@ -92,9 +112,22 @@ class ResponsiveShell extends ConsumerWidget {
     final displayName = hasName ? user!.fullName.trim() : NavStrings.myAccount;
     final avatarLetter =
         hasName ? displayName.characters.first.toUpperCase() : '?';
-    final sectionTitle = _destinations[_selectedIndex].label;
+    final selectedIndex = currentLocation.startsWith('/lots/')
+        ? 1
+        : currentLocation.startsWith('/pedidos/')
+            ? destinations
+                .indexWhere((item) => item.path.startsWith('/pedidos/'))
+            : destinations.indexWhere((item) =>
+                currentLocation == item.path ||
+                currentLocation.startsWith('${item.path}/'));
+    final selected = selectedIndex < 0 ? 0 : selectedIndex;
+    final sectionTitle = destinations[selected].label;
     final router = GoRouter.maybeOf(context);
-    final backTarget = router == null ? null : _backTarget;
+    final backTarget = router == null || currentLocation == '/'
+        ? null
+        : destinations[selected].path == currentLocation
+            ? '/'
+            : destinations[selected].path;
 
     return PopScope(
       canPop: backTarget == null || router!.canPop(),
@@ -163,11 +196,11 @@ class ResponsiveShell extends ConsumerWidget {
             ),
             body: SafeArea(top: false, child: child),
             bottomNavigationBar: NavigationBar(
-              selectedIndex: _selectedIndex,
+              selectedIndex: selected,
               onDestinationSelected: (index) =>
-                  _guardedGo(context, _destinations[index].path),
+                  _guardedGo(context, destinations[index].path),
               destinations: [
-                for (final item in _destinations)
+                for (final item in destinations)
                   NavigationDestination(
                       icon: Icon(item.icon), label: item.label)
               ],
@@ -181,9 +214,9 @@ class ResponsiveShell extends ConsumerWidget {
             NavigationRail(
               extended: expanded,
               minExtendedWidth: 224,
-              selectedIndex: _selectedIndex,
+              selectedIndex: selected,
               onDestinationSelected: (index) =>
-                  _guardedGo(context, _destinations[index].path),
+                  _guardedGo(context, destinations[index].path),
               leading: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 24),
                 child: expanded
@@ -202,7 +235,7 @@ class ResponsiveShell extends ConsumerWidget {
                       ),
               ),
               destinations: [
-                for (final item in _destinations)
+                for (final item in destinations)
                   NavigationRailDestination(
                       icon: Icon(item.icon), label: Text(item.label))
               ],
@@ -216,7 +249,7 @@ class ResponsiveShell extends ConsumerWidget {
                   color: AppTheme.headerSurface,
                   border: Border(bottom: BorderSide(color: AppTheme.outline)),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 28),
+                padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Row(children: [
                   Text(
                     sectionTitle,

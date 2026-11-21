@@ -1,5 +1,6 @@
 import '../../../../core/result/result.dart';
 import '../entities/auth_session.dart';
+import '../entities/saved_account.dart';
 import '../entities/user.dart';
 
 abstract class AuthRepository {
@@ -22,4 +23,15 @@ abstract class AuthRepository {
   Future<Result<String?, DomainFailure>> getStoredRefreshToken();
   Future<String> getDeviceId();
   Future<void> clearSession();
+}
+
+/// Additional local-only account tools. Kept separate so existing auth fakes
+/// and implementations are not required to support multi-account storage.
+abstract interface class LocalAccountRepository {
+  Future<String> getDeviceIdForPhone(String phone);
+  Future<List<SavedAccount>> getSavedAccounts();
+  Future<Result<AuthSession, DomainFailure>> activateSavedAccount(
+      String userId);
+  Future<User?> activateSavedAccountOffline(String userId);
+  Future<void> removeSavedAccount(String userId);
 }

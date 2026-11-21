@@ -2274,6 +2274,12 @@ class $OutboxOperationsTable extends OutboxOperations
   late final GeneratedColumn<String> opId = GeneratedColumn<String>(
       'op_id', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _ownerUserIdMeta =
+      const VerificationMeta('ownerUserId');
+  @override
+  late final GeneratedColumn<String> ownerUserId = GeneratedColumn<String>(
+      'owner_user_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _entityMeta = const VerificationMeta('entity');
   @override
   late final GeneratedColumn<String> entity = GeneratedColumn<String>(
@@ -2334,6 +2340,7 @@ class $OutboxOperationsTable extends OutboxOperations
   @override
   List<GeneratedColumn> get $columns => [
         opId,
+        ownerUserId,
         entity,
         entityId,
         type,
@@ -2360,6 +2367,12 @@ class $OutboxOperationsTable extends OutboxOperations
           _opIdMeta, opId.isAcceptableOrUnknown(data['op_id']!, _opIdMeta));
     } else if (isInserting) {
       context.missing(_opIdMeta);
+    }
+    if (data.containsKey('owner_user_id')) {
+      context.handle(
+          _ownerUserIdMeta,
+          ownerUserId.isAcceptableOrUnknown(
+              data['owner_user_id']!, _ownerUserIdMeta));
     }
     if (data.containsKey('entity')) {
       context.handle(_entityMeta,
@@ -2434,6 +2447,8 @@ class $OutboxOperationsTable extends OutboxOperations
     return OutboxOperation(
       opId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}op_id'])!,
+      ownerUserId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}owner_user_id']),
       entity: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}entity'])!,
       entityId: attachedDatabase.typeMapping
@@ -2465,6 +2480,7 @@ class $OutboxOperationsTable extends OutboxOperations
 
 class OutboxOperation extends DataClass implements Insertable<OutboxOperation> {
   final String opId;
+  final String? ownerUserId;
   final String entity;
   final String entityId;
   final String type;
@@ -2477,6 +2493,7 @@ class OutboxOperation extends DataClass implements Insertable<OutboxOperation> {
   final String? lastError;
   const OutboxOperation(
       {required this.opId,
+      this.ownerUserId,
       required this.entity,
       required this.entityId,
       required this.type,
@@ -2491,6 +2508,9 @@ class OutboxOperation extends DataClass implements Insertable<OutboxOperation> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['op_id'] = Variable<String>(opId);
+    if (!nullToAbsent || ownerUserId != null) {
+      map['owner_user_id'] = Variable<String>(ownerUserId);
+    }
     map['entity'] = Variable<String>(entity);
     map['entity_id'] = Variable<String>(entityId);
     map['type'] = Variable<String>(type);
@@ -2511,6 +2531,9 @@ class OutboxOperation extends DataClass implements Insertable<OutboxOperation> {
   OutboxOperationsCompanion toCompanion(bool nullToAbsent) {
     return OutboxOperationsCompanion(
       opId: Value(opId),
+      ownerUserId: ownerUserId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ownerUserId),
       entity: Value(entity),
       entityId: Value(entityId),
       type: Value(type),
@@ -2533,6 +2556,7 @@ class OutboxOperation extends DataClass implements Insertable<OutboxOperation> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return OutboxOperation(
       opId: serializer.fromJson<String>(json['opId']),
+      ownerUserId: serializer.fromJson<String?>(json['ownerUserId']),
       entity: serializer.fromJson<String>(json['entity']),
       entityId: serializer.fromJson<String>(json['entityId']),
       type: serializer.fromJson<String>(json['type']),
@@ -2550,6 +2574,7 @@ class OutboxOperation extends DataClass implements Insertable<OutboxOperation> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'opId': serializer.toJson<String>(opId),
+      'ownerUserId': serializer.toJson<String?>(ownerUserId),
       'entity': serializer.toJson<String>(entity),
       'entityId': serializer.toJson<String>(entityId),
       'type': serializer.toJson<String>(type),
@@ -2565,6 +2590,7 @@ class OutboxOperation extends DataClass implements Insertable<OutboxOperation> {
 
   OutboxOperation copyWith(
           {String? opId,
+          Value<String?> ownerUserId = const Value.absent(),
           String? entity,
           String? entityId,
           String? type,
@@ -2577,6 +2603,7 @@ class OutboxOperation extends DataClass implements Insertable<OutboxOperation> {
           Value<String?> lastError = const Value.absent()}) =>
       OutboxOperation(
         opId: opId ?? this.opId,
+        ownerUserId: ownerUserId.present ? ownerUserId.value : this.ownerUserId,
         entity: entity ?? this.entity,
         entityId: entityId ?? this.entityId,
         type: type ?? this.type,
@@ -2591,6 +2618,8 @@ class OutboxOperation extends DataClass implements Insertable<OutboxOperation> {
   OutboxOperation copyWithCompanion(OutboxOperationsCompanion data) {
     return OutboxOperation(
       opId: data.opId.present ? data.opId.value : this.opId,
+      ownerUserId:
+          data.ownerUserId.present ? data.ownerUserId.value : this.ownerUserId,
       entity: data.entity.present ? data.entity.value : this.entity,
       entityId: data.entityId.present ? data.entityId.value : this.entityId,
       type: data.type.present ? data.type.value : this.type,
@@ -2612,6 +2641,7 @@ class OutboxOperation extends DataClass implements Insertable<OutboxOperation> {
   String toString() {
     return (StringBuffer('OutboxOperation(')
           ..write('opId: $opId, ')
+          ..write('ownerUserId: $ownerUserId, ')
           ..write('entity: $entity, ')
           ..write('entityId: $entityId, ')
           ..write('type: $type, ')
@@ -2627,13 +2657,25 @@ class OutboxOperation extends DataClass implements Insertable<OutboxOperation> {
   }
 
   @override
-  int get hashCode => Object.hash(opId, entity, entityId, type, payloadJson,
-      baseVersion, clientTs, status, attempts, nextAttemptAt, lastError);
+  int get hashCode => Object.hash(
+      opId,
+      ownerUserId,
+      entity,
+      entityId,
+      type,
+      payloadJson,
+      baseVersion,
+      clientTs,
+      status,
+      attempts,
+      nextAttemptAt,
+      lastError);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is OutboxOperation &&
           other.opId == this.opId &&
+          other.ownerUserId == this.ownerUserId &&
           other.entity == this.entity &&
           other.entityId == this.entityId &&
           other.type == this.type &&
@@ -2648,6 +2690,7 @@ class OutboxOperation extends DataClass implements Insertable<OutboxOperation> {
 
 class OutboxOperationsCompanion extends UpdateCompanion<OutboxOperation> {
   final Value<String> opId;
+  final Value<String?> ownerUserId;
   final Value<String> entity;
   final Value<String> entityId;
   final Value<String> type;
@@ -2661,6 +2704,7 @@ class OutboxOperationsCompanion extends UpdateCompanion<OutboxOperation> {
   final Value<int> rowid;
   const OutboxOperationsCompanion({
     this.opId = const Value.absent(),
+    this.ownerUserId = const Value.absent(),
     this.entity = const Value.absent(),
     this.entityId = const Value.absent(),
     this.type = const Value.absent(),
@@ -2675,6 +2719,7 @@ class OutboxOperationsCompanion extends UpdateCompanion<OutboxOperation> {
   });
   OutboxOperationsCompanion.insert({
     required String opId,
+    this.ownerUserId = const Value.absent(),
     required String entity,
     required String entityId,
     required String type,
@@ -2697,6 +2742,7 @@ class OutboxOperationsCompanion extends UpdateCompanion<OutboxOperation> {
         nextAttemptAt = Value(nextAttemptAt);
   static Insertable<OutboxOperation> custom({
     Expression<String>? opId,
+    Expression<String>? ownerUserId,
     Expression<String>? entity,
     Expression<String>? entityId,
     Expression<String>? type,
@@ -2711,6 +2757,7 @@ class OutboxOperationsCompanion extends UpdateCompanion<OutboxOperation> {
   }) {
     return RawValuesInsertable({
       if (opId != null) 'op_id': opId,
+      if (ownerUserId != null) 'owner_user_id': ownerUserId,
       if (entity != null) 'entity': entity,
       if (entityId != null) 'entity_id': entityId,
       if (type != null) 'type': type,
@@ -2727,6 +2774,7 @@ class OutboxOperationsCompanion extends UpdateCompanion<OutboxOperation> {
 
   OutboxOperationsCompanion copyWith(
       {Value<String>? opId,
+      Value<String?>? ownerUserId,
       Value<String>? entity,
       Value<String>? entityId,
       Value<String>? type,
@@ -2740,6 +2788,7 @@ class OutboxOperationsCompanion extends UpdateCompanion<OutboxOperation> {
       Value<int>? rowid}) {
     return OutboxOperationsCompanion(
       opId: opId ?? this.opId,
+      ownerUserId: ownerUserId ?? this.ownerUserId,
       entity: entity ?? this.entity,
       entityId: entityId ?? this.entityId,
       type: type ?? this.type,
@@ -2759,6 +2808,9 @@ class OutboxOperationsCompanion extends UpdateCompanion<OutboxOperation> {
     final map = <String, Expression>{};
     if (opId.present) {
       map['op_id'] = Variable<String>(opId.value);
+    }
+    if (ownerUserId.present) {
+      map['owner_user_id'] = Variable<String>(ownerUserId.value);
     }
     if (entity.present) {
       map['entity'] = Variable<String>(entity.value);
@@ -2800,6 +2852,7 @@ class OutboxOperationsCompanion extends UpdateCompanion<OutboxOperation> {
   String toString() {
     return (StringBuffer('OutboxOperationsCompanion(')
           ..write('opId: $opId, ')
+          ..write('ownerUserId: $ownerUserId, ')
           ..write('entity: $entity, ')
           ..write('entityId: $entityId, ')
           ..write('type: $type, ')
@@ -4352,6 +4405,7 @@ typedef $$LotsTableProcessedTableManager = ProcessedTableManager<
 typedef $$OutboxOperationsTableCreateCompanionBuilder
     = OutboxOperationsCompanion Function({
   required String opId,
+  Value<String?> ownerUserId,
   required String entity,
   required String entityId,
   required String type,
@@ -4367,6 +4421,7 @@ typedef $$OutboxOperationsTableCreateCompanionBuilder
 typedef $$OutboxOperationsTableUpdateCompanionBuilder
     = OutboxOperationsCompanion Function({
   Value<String> opId,
+  Value<String?> ownerUserId,
   Value<String> entity,
   Value<String> entityId,
   Value<String> type,
@@ -4391,6 +4446,9 @@ class $$OutboxOperationsTableFilterComposer
   });
   ColumnFilters<String> get opId => $composableBuilder(
       column: $table.opId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get ownerUserId => $composableBuilder(
+      column: $table.ownerUserId, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get entity => $composableBuilder(
       column: $table.entity, builder: (column) => ColumnFilters(column));
@@ -4435,6 +4493,9 @@ class $$OutboxOperationsTableOrderingComposer
   ColumnOrderings<String> get opId => $composableBuilder(
       column: $table.opId, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get ownerUserId => $composableBuilder(
+      column: $table.ownerUserId, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get entity => $composableBuilder(
       column: $table.entity, builder: (column) => ColumnOrderings(column));
 
@@ -4478,6 +4539,9 @@ class $$OutboxOperationsTableAnnotationComposer
   });
   GeneratedColumn<String> get opId =>
       $composableBuilder(column: $table.opId, builder: (column) => column);
+
+  GeneratedColumn<String> get ownerUserId => $composableBuilder(
+      column: $table.ownerUserId, builder: (column) => column);
 
   GeneratedColumn<String> get entity =>
       $composableBuilder(column: $table.entity, builder: (column) => column);
@@ -4538,6 +4602,7 @@ class $$OutboxOperationsTableTableManager extends RootTableManager<
               $$OutboxOperationsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback: ({
             Value<String> opId = const Value.absent(),
+            Value<String?> ownerUserId = const Value.absent(),
             Value<String> entity = const Value.absent(),
             Value<String> entityId = const Value.absent(),
             Value<String> type = const Value.absent(),
@@ -4552,6 +4617,7 @@ class $$OutboxOperationsTableTableManager extends RootTableManager<
           }) =>
               OutboxOperationsCompanion(
             opId: opId,
+            ownerUserId: ownerUserId,
             entity: entity,
             entityId: entityId,
             type: type,
@@ -4566,6 +4632,7 @@ class $$OutboxOperationsTableTableManager extends RootTableManager<
           ),
           createCompanionCallback: ({
             required String opId,
+            Value<String?> ownerUserId = const Value.absent(),
             required String entity,
             required String entityId,
             required String type,
@@ -4580,6 +4647,7 @@ class $$OutboxOperationsTableTableManager extends RootTableManager<
           }) =>
               OutboxOperationsCompanion.insert(
             opId: opId,
+            ownerUserId: ownerUserId,
             entity: entity,
             entityId: entityId,
             type: type,

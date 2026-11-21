@@ -10,12 +10,17 @@ import '../features/auth/presentation/profile_screen.dart';
 import '../features/auth/presentation/provider_profile_screen.dart';
 import '../features/auth/presentation/providers/auth_provider.dart';
 import '../features/catalog/presentation/catalog_search_screen.dart';
+import '../features/catalog/domain/entities/lot.dart' hide Category, Product;
 import '../features/catalog/presentation/lot_detail_screen.dart';
 import '../features/catalog/presentation/lot_form_screen.dart';
 import '../features/catalog/presentation/my_lots_screen.dart';
+import '../features/ordering/presentation/screens/order_screens.dart';
 import '../core/config/env.dart';
 import '../core/i18n/strings.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../features/logistics/presentation/logistics_screen.dart';
+import '../features/logistics/presentation/logistics_provider.dart'
+    show logisticsUserProvider;
 
 final router = GoRouter(
   initialLocation: '/splash',
@@ -46,6 +51,24 @@ final router = GoRouter(
             context,
             state,
             const HomeScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/logistica',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const CarrierRoleGate(child: LogisticsScreen()),
+          ),
+        ),
+        GoRoute(
+          path: '/logistica/viajes/:id',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            CarrierRoleGate(
+              child: TripDetailScreen(tripId: state.pathParameters['id']!),
+            ),
           ),
         ),
         GoRoute(
@@ -90,6 +113,49 @@ final router = GoRouter(
                   state,
                   LotDetailScreen(lotId: state.pathParameters['id']!),
                 )),
+        GoRoute(
+          path: '/pedidos/nuevo',
+          pageBuilder: (context, state) => _orderRoutePage(
+            context,
+            state,
+            OrderRoleGate(
+              roles: const {'buyer'},
+              child: OrderCheckoutScreen(
+                initialLot: state.extra is Lot ? state.extra as Lot : null,
+              ),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/pedidos/mis-pedidos',
+          pageBuilder: (context, state) => _orderRoutePage(
+            context,
+            state,
+            const OrderRoleGate(roles: {'buyer'}, child: MyOrdersScreen()),
+          ),
+        ),
+        GoRoute(
+          path: '/pedidos/entrantes',
+          pageBuilder: (context, state) => _orderRoutePage(
+            context,
+            state,
+            const OrderRoleGate(
+              roles: {'producer', 'supplier'},
+              child: IncomingOrdersScreen(),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/pedidos/:id',
+          pageBuilder: (context, state) => _orderRoutePage(
+            context,
+            state,
+            OrderRoleGate(
+              roles: const {'buyer', 'producer', 'supplier'},
+              child: OrderDetailScreen(orderId: state.pathParameters['id']!),
+            ),
+          ),
+        ),
         GoRoute(
             path: '/perfil',
             pageBuilder: (context, state) =>
@@ -153,6 +219,21 @@ class AuthenticatedShell extends ConsumerWidget {
   }
 }
 
+class CarrierRoleGate extends ConsumerWidget {
+  const CarrierRoleGate({required this.child, super.key});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider);
+    final user = ref.watch(logisticsUserProvider);
+    if (auth.isLoading && user == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return user?.role == 'carrier' ? child : const NotFoundScreen();
+  }
+}
+
 Page<void> _routePage(BuildContext context, GoRouterState state, Widget child) {
   if (MediaQuery.of(context).disableAnimations) {
     return NoTransitionPage<void>(key: state.pageKey, child: child);
@@ -208,6 +289,31 @@ Page<void> _routePage(BuildContext context, GoRouterState state, Widget child) {
             ),
           );
         },
+      );
+    },
+  );
+}
+
+Page<void> _orderRoutePage(
+    BuildContext context, GoRouterState state, Widget child) {
+  if (MediaQuery.of(context).disableAnimations) {
+    return NoTransitionPage<void>(key: state.pageKey, child: child);
+  }
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: AppMotion.fast,
+    reverseTransitionDuration: AppMotion.fast,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final curved =
+          CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+      return FadeTransition(
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween<Offset>(begin: const Offset(.08, 0), end: Offset.zero)
+              .animate(curved),
+          child: child,
+        ),
       );
     },
   );

@@ -90,7 +90,8 @@ El segundo comando genera el código de Drift para la base local.
 ```bash
 flutter run \
   --dart-define=API_BASE_URL=http://10.0.2.2:3000 \
-  --dart-define=PRIVACY_POLICY_VERSION=v0-draft
+  --dart-define=PRIVACY_POLICY_VERSION=v0-draft \
+  --dart-define=ENABLE_LOCAL_MULTI_ACCOUNT=true
 ```
 
 Para el simulador de iOS, usa el host del Mac:
@@ -98,7 +99,8 @@ Para el simulador de iOS, usa el host del Mac:
 ```bash
 flutter run \
   --dart-define=API_BASE_URL=http://localhost:3000 \
-  --dart-define=PRIVACY_POLICY_VERSION=v0-draft
+  --dart-define=PRIVACY_POLICY_VERSION=v0-draft \
+  --dart-define=ENABLE_LOCAL_MULTI_ACCOUNT=true
 ```
 
 Direcciones según el entorno:
@@ -126,6 +128,7 @@ flutter build ipa --release \
 | Variable | Uso |
 | --- | --- |
 | `API_BASE_URL` | URL base del backend |
+| `ENABLE_LOCAL_MULTI_ACCOUNT` | Muestra el selector de sesiones de prueba (solo debug; `true` para habilitarlo) |
 | `PRIVACY_POLICY_VERSION` | Versión del aviso de privacidad aceptada |
 | `LOG_LEVEL` | Nivel de logs de la app |
 

@@ -59,6 +59,104 @@ abstract final class RoleStrings {
       };
 }
 
+abstract final class LogisticsStrings {
+  static const title = 'Logística';
+  static const intro = 'Organiza tus viajes y confirma cada parada.';
+  static const candidates = 'Pedidos disponibles';
+  static const trips = 'Mis viajes';
+  static const noCandidates = 'No hay pedidos listos para recoger.';
+  static const refreshCandidates = 'Actualizar pedidos';
+  static const noTrips = 'Todavía no tienes viajes asignados.';
+  static const createTrip = 'Crear viaje';
+  static const selectOrders = 'Selecciona al menos un pedido.';
+  static const tripCreated = 'Viaje guardado para sincronizar.';
+  static const localTripCreated =
+      'Viaje guardado en este dispositivo, sin sincronizar.';
+  static const localTripNotice =
+      'Este viaje no está sincronizado con el servidor.';
+  static const startTrip = 'Iniciar viaje';
+  static const checkinPickup = 'Confirmar recogida';
+  static const checkinDelivery = 'Confirmar entrega';
+  static const checkinSaved = 'Check-in guardado para sincronizar.';
+  static const reportIncident = 'Reportar novedad';
+  static const incidentSaved = 'Novedad guardada para sincronizar.';
+  static const pendingSync = 'acciones pendientes de sincronización';
+  static String pendingSyncCount(int count) => count == 1
+      ? '1 acción pendiente de sincronización'
+      : '$count $pendingSync';
+  static const route = 'Recorrido';
+  static const delivery = 'Entrega';
+  static const pickup = 'Recogida';
+  static const order = 'Pedido';
+  static const offlineNotice =
+      'Sin conexión: verás los datos guardados y tus acciones se enviarán al volver a conectarte.';
+  static const homeHeadline = 'Tus viajes, a tu ritmo.';
+  static const homeDescription =
+      'Consulta pedidos listos, organiza tu recorrido y confirma cada parada.';
+  static const openLogistics = 'Abrir logística';
+  static const saveTripError = 'No pudimos guardar el viaje. Intenta de nuevo.';
+  static const candidatesLoadError = 'No pudimos cargar pedidos.';
+  static const tripsLoadError = 'No pudimos cargar tus viajes.';
+  static const vehicleSetup = 'Completa tu vehículo';
+  static const vehicleSetupHint = 'Necesario para crear viajes.';
+  static const complete = 'Completar';
+  static const vehicleData = 'Datos del vehículo';
+  static const vehicleType = 'Tipo de vehículo';
+  static const vehicleCapacity = 'Capacidad (kg)';
+  static const plate = 'Placa';
+  static const profileSaved = 'Perfil guardado para sincronizar.';
+  static const profileSaveError = 'No pudimos guardar los datos del vehículo.';
+  static const vehicleValidation =
+      'Revisa tipo, capacidad y placa del vehículo.';
+  static const candidatesEmptyHint =
+      'Aquí solo aparecen pedidos con el pago verificado. Cuando se confirme, estarán listos para recoger.';
+  static const pickupAt = 'Recoge en';
+  static const deliveryAt = 'Entrega en';
+  static String orderShort(String id) => 'Pedido $id';
+  static String deliveryWindow(String date) => 'Ventana: $date';
+  static const tripsEmptyHint =
+      'Selecciona pedidos disponibles para organizar tu primer viaje.';
+  static String tripShort(String id) => 'Viaje $id';
+  static const saveActionError = 'No pudimos guardar la acción.';
+  static const tripUnavailable = 'Viaje no disponible';
+  static const refreshTripsHint =
+      'Actualiza la lista de viajes para continuar.';
+  static const backToLogistics = 'Volver a logística';
+  static const tripStartSaved = 'Inicio del viaje guardado para sincronizar.';
+  static const localActionSaved =
+      'Cambio guardado en este dispositivo, sin sincronizar.';
+  static const stopsLoadError = 'No pudimos cargar las paradas.';
+  static const incidentType = 'Tipo';
+  static const delay = 'Retraso';
+  static const cargoIssue = 'Problema con la carga';
+  static const other = 'Otro';
+  static const incidentDescription = '¿Qué ocurrió?';
+  static const incidentSaveError = 'No pudimos guardar la novedad.';
+  static const noStops = 'Sin paradas';
+  static const noStopsHint = 'Este viaje todavía no tiene paradas registradas.';
+  static const failedOperations = 'acciones necesitan revisión.';
+  static const pendingSavedLocally =
+      'Tus cambios siguen guardados en este dispositivo.';
+  static const syncNotAccepted =
+      'Algunas acciones necesitan revisión. Tus datos locales se conservaron.';
+  static const syncCouldNotSend =
+      'No se pudo enviar todavía. Tus cambios siguen guardados aquí.';
+  static const retrySync = 'Reintentar sincronización';
+  static const recordLocalPayment = 'Reportar pago';
+  static const paymentReported = 'Pago reportado. Pendiente de confirmación.';
+  static const locallyPaidStatus = 'Pago reportado, pendiente de confirmación';
+  static const pendingTrip = 'Pendiente de sincronización';
+  static String tripStatus(String status) => switch (status) {
+        'planned' => 'Planeado',
+        'assigned' => 'Asignado',
+        'in_progress' => 'En curso',
+        'completed' => 'Completado',
+        'cancelled' => 'Cancelado',
+        'sync_pending' => pendingTrip,
+        _ => status,
+      };
+}
+
 abstract final class ProfileStrings {
   static const title = 'Mi cuenta';
   static const notFound = 'No encontramos los datos de tu cuenta.';
@@ -103,6 +201,19 @@ abstract final class ProfileStrings {
   static const supportBody = 'Estamos preparando este canal de atención.';
   static const appName = 'TRACOP';
   static const tagline = 'Conectamos el campo con quienes lo necesitan';
+  static const localAccounts = 'Cuentas de prueba en este dispositivo';
+  static const localAccountsHint =
+      'Cambia entre cuentas registradas con números diferentes.';
+  static const addLocalAccount = 'Agregar otra cuenta';
+  static const savedAccounts = 'Cuentas guardadas';
+  static const removeLocalAccount = 'Quitar del dispositivo';
+  static const removeLocalAccountTitle = 'QUITAR CUENTA';
+  static const removeLocalAccountBody =
+      'Se eliminará la sesión guardada de este dispositivo. La cuenta seguirá activa.';
+  static const accountRemoved = 'Cuenta quitada de este dispositivo.';
+  static const accountSwitched = 'Cuenta cambiada.';
+  static const localMultiAccountOnly =
+      'Disponible solo en modo debug con la opción local activada.';
 
   static const online = 'Conectado';
   static const onlineBody = 'Tus cambios se guardan al confirmar.';
