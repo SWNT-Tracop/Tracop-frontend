@@ -19,6 +19,10 @@ import 'features/catalog/presentation/providers/catalog_provider.dart';
 import 'features/ordering/data/remote/order_remote.dart';
 import 'features/ordering/data/repository/order_repository_impl.dart';
 import 'features/ordering/presentation/providers/order_provider.dart';
+import 'features/logistics/data/logistics_remote.dart';
+
+import 'features/logistics/data/logistics_repository.dart';
+import 'features/logistics/presentation/logistics_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,6 +39,10 @@ Future<void> main() async {
   final catalogRepo = CatalogRepositoryImpl(remote: catalogRemote, db: db);
   final orderRemote = OrderRemoteDataSourceImpl(dioClient);
   final orderRepo = OrderRepositoryImpl(remote: orderRemote, db: db);
+  final logisticsRepo = LogisticsRepository(
+    remote: LogisticsRemoteDataSource(dioClient),
+    database: db,
+  );
 
   dioClient.setRefreshHandler(() async {
     final stored = await authRepo.getStoredRefreshToken();
@@ -61,6 +69,7 @@ Future<void> main() async {
         authRepositoryProvider.overrideWithValue(authRepo),
         catalogRepositoryProvider.overrideWithValue(catalogRepo),
         orderRepositoryProvider.overrideWithValue(orderRepo),
+        logisticsRepositoryProvider.overrideWithValue(logisticsRepo),
       ],
       child: const TracopApp(),
     ),

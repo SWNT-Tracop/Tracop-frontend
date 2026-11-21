@@ -5,9 +5,11 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/i18n/strings.dart';
 import '../../../shared/widgets/lot_interaction_widgets.dart';
 import '../../auth/domain/entities/user.dart';
-import '../../auth/presentation/providers/auth_provider.dart';
+import '../../auth/presentation/providers/auth_provider.dart'
+    show authRepositoryProvider;
 import '../../catalog/domain/entities/lot.dart' hide Category, Product;
 import '../../catalog/presentation/providers/catalog_provider.dart';
 import '../../catalog/presentation/providers/lot_management_provider.dart'
@@ -46,6 +48,7 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(homeUserProvider).valueOrNull;
+    if (user?.role == 'carrier') return const _CarrierLanding();
     final lots = ref.watch(homeLotsProvider);
     final cachedLots = ref.watch(homeLotsCacheProvider);
     final products = ref.watch(catalogProductsProvider).valueOrNull ?? const [];
@@ -136,6 +139,46 @@ class HomeScreen extends ConsumerWidget {
       },
     );
   }
+}
+
+class _CarrierLanding extends StatelessWidget {
+  const _CarrierLanding();
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+        color: AppTheme.background,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Icon(Icons.local_shipping_outlined,
+                      size: 52, color: AppTheme.carrierAccent),
+                  const SizedBox(height: 20),
+                  Text(LogisticsStrings.homeHeadline,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.headlineMedium),
+                  const SizedBox(height: 8),
+                  const Text(
+                    LogisticsStrings.homeDescription,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  FilledButton.icon(
+                    onPressed: () => context.go('/logistica'),
+                    icon: const Icon(Icons.route_outlined),
+                    label: const Text(LogisticsStrings.openLogistics),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
 ({String label, String path}) _primaryAction({

@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../app/theme.dart';
 import '../../../../core/i18n/formats.dart';
+import '../../../../core/i18n/strings.dart';
 import '../../../../core/result/result.dart';
 import '../../../../features/catalog/domain/entities/lot.dart'
     hide Category, Product;
@@ -240,7 +241,7 @@ class _IncomingOrdersScreenState extends ConsumerState<IncomingOrdersScreen> {
 
   @override
   Widget build(BuildContext context) => OrderRoleGate(
-        roles: const {'supplier'},
+        roles: const {'producer', 'supplier'},
         child: RefreshIndicator(
           onRefresh: () => _load(),
           child: ListView(
@@ -605,6 +606,27 @@ class OrderDetailScreen extends ConsumerStatefulWidget {
 class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
   bool _busy = false;
 
+  Future<void> _reportPayment(OrderResponse order) async {
+    setState(() => _busy = true);
+    final result =
+        await ref.read(orderRepositoryProvider).simulatePaymentLocally(order);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    result.map(
+      ok: (_) {
+        ref.invalidate(orderDetailProvider(order.id));
+        ref.invalidate(myOrdersProvider(null));
+        ref.invalidate(incomingOrdersProvider(null));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(LogisticsStrings.paymentReported)),
+        );
+      },
+      err: (failure) => ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(failure.error.message)),
+      ),
+    );
+  }
+
   Future<void> _accept(OrderResponse order) async {
     final accepted = await showDialog<bool>(
         context: context,
@@ -717,7 +739,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
         final isBuyer = role == 'buyer';
         final canCancel = {'requested', 'quoted', 'accepted', 'payment_pending'}
                 .contains(order.status) &&
-            (isBuyer || role == 'supplier');
+            (isBuyer || role == 'producer' || role == 'supplier');
         return ListView(
             padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
             children: [
@@ -726,7 +748,16 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
               const SizedBox(height: 14),
               Align(
                   alignment: Alignment.centerLeft,
-                  child: OrderStatusBadge(status: order.status, large: true)),
+                  child: OrderStatusBadge(
+                    status:
+                        order.isLocallyPaid ? 'payment_pending' : order.status,
+                    large: true,
+                  )),
+              if (order.isLocallyPaid)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(LogisticsStrings.locallyPaidStatus),
+                ),
               const SizedBox(height: 20),
               Text('Productos',
                   style: Theme.of(context)
@@ -788,6 +819,19 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                         child: _busy
                             ? const CircularProgressIndicator()
                             : const Text('Aceptar cotización'))),
+              ],
+              if (isBuyer &&
+                  !order.isLocallyPaid &&
+                  {'accepted', 'payment_pending'}.contains(order.status)) ...[
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 50,
+                  child: FilledButton.tonalIcon(
+                    onPressed: _busy ? null : () => _reportPayment(order),
+                    icon: const Icon(Icons.payments_outlined),
+                    label: const Text(LogisticsStrings.recordLocalPayment),
+                  ),
+                ),
               ],
               if (canCancel) ...[
                 const SizedBox(height: 10),

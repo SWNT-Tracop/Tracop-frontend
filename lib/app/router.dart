@@ -18,6 +18,9 @@ import '../features/ordering/presentation/screens/order_screens.dart';
 import '../core/config/env.dart';
 import '../core/i18n/strings.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../features/logistics/presentation/logistics_screen.dart';
+import '../features/logistics/presentation/logistics_provider.dart'
+    show logisticsUserProvider;
 
 final router = GoRouter(
   initialLocation: '/splash',
@@ -48,6 +51,24 @@ final router = GoRouter(
             context,
             state,
             const HomeScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/logistica',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const CarrierRoleGate(child: LogisticsScreen()),
+          ),
+        ),
+        GoRoute(
+          path: '/logistica/viajes/:id',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            CarrierRoleGate(
+              child: TripDetailScreen(tripId: state.pathParameters['id']!),
+            ),
           ),
         ),
         GoRoute(
@@ -119,7 +140,7 @@ final router = GoRouter(
             context,
             state,
             const OrderRoleGate(
-              roles: {'supplier'},
+              roles: {'producer', 'supplier'},
               child: IncomingOrdersScreen(),
             ),
           ),
@@ -130,7 +151,7 @@ final router = GoRouter(
             context,
             state,
             OrderRoleGate(
-              roles: const {'buyer', 'supplier'},
+              roles: const {'buyer', 'producer', 'supplier'},
               child: OrderDetailScreen(orderId: state.pathParameters['id']!),
             ),
           ),
@@ -195,6 +216,21 @@ class AuthenticatedShell extends ConsumerWidget {
             )
           : child,
     );
+  }
+}
+
+class CarrierRoleGate extends ConsumerWidget {
+  const CarrierRoleGate({required this.child, super.key});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider);
+    final user = ref.watch(logisticsUserProvider);
+    if (auth.isLoading && user == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return user?.role == 'carrier' ? child : const NotFoundScreen();
   }
 }
 

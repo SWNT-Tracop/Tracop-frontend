@@ -739,6 +739,20 @@ Datos que se cachean:
 - Resultados de búsqueda consultados.
 - Última fecha de sincronización por recurso.
 
+### Flujos del transportista
+
+La navegación móvil de `carrier` se limita a logística y perfil; no incluye vistas de operador. La lista de candidatos consume `GET /logistics/orders/candidates?limit=` y muestra zonas, cantidades, unidades y una referencia corta del pedido. No debe consultar detalles de pedidos ni inferir direcciones completas o datos del comprador.
+
+| Acción del transportista | Operación en outbox | Reconciliación |
+| --- | --- | --- |
+| Crear/actualizar vehículo | `carrier_profile` · `create`/`update` | Upsert autorizado sobre el usuario autenticado |
+| Crear viaje | `trip` · `create` con `orderIds` | ID UUID v7 generado en el dispositivo; servidor valida pedidos `paid` |
+| Iniciar viaje | `trip` · `transition`, `payload.action=start` | `baseVersion` del viaje |
+| Confirmar parada | `checkin` · `create` | `baseVersion`, propiedad y estado validados en servidor |
+| Reportar novedad | `incident` · `create` | Viaje propio y pedido asociado validados en servidor |
+
+El perfil de vehículo, candidatos, viajes y paradas se cachean localmente separados por usuario. Las operaciones de outbox también quedan vinculadas a la cuenta autenticada para evitar mezclar viajes o check-ins al cambiar de cuenta en el mismo dispositivo. Cuando se recupera conexión se envían hasta 50 operaciones por `POST /sync/push`; las operaciones `rejected`/`conflict` se conservan y se informa que requieren revisión, pero no se reintentan a ciegas. Los cambios logísticos y la resolución de conflictos de versión siguen siendo autoridad del servidor.
+
 ---
 
 ## 13. Ejemplos de errores

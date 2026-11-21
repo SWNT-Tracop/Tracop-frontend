@@ -34,22 +34,35 @@ class ResponsiveShell extends ConsumerWidget {
 
   List<({String path, String label, IconData icon})> _destinationsFor(
           String? role) =>
-      [
-        ..._baseDestinations.take(2),
-        if (role == 'buyer')
-          (
-            path: '/pedidos/mis-pedidos',
-            label: 'Pedidos',
-            icon: Icons.receipt_long_outlined
-          ),
-        if (role == 'supplier')
-          (
-            path: '/pedidos/entrantes',
-            label: 'Pedidos',
-            icon: Icons.inbox_outlined
-          ),
-        ..._baseDestinations.skip(2),
-      ];
+      role == 'carrier'
+          ? const [
+              (
+                path: '/logistica',
+                label: 'Logística',
+                icon: Icons.local_shipping_outlined
+              ),
+              (
+                path: '/perfil',
+                label: NavStrings.profile,
+                icon: Icons.person_outline
+              ),
+            ]
+          : [
+              ..._baseDestinations.take(2),
+              if (role == 'buyer')
+                (
+                  path: '/pedidos/mis-pedidos',
+                  label: 'Pedidos',
+                  icon: Icons.receipt_long_outlined
+                ),
+              if (role == 'producer' || role == 'supplier')
+                (
+                  path: '/pedidos/entrantes',
+                  label: 'Pedidos',
+                  icon: Icons.inbox_outlined
+                ),
+              ..._baseDestinations.skip(2),
+            ];
 
   void _onConnectivityChange(
       AsyncValue<bool>? previous, AsyncValue<bool> next) {
@@ -236,7 +249,7 @@ class ResponsiveShell extends ConsumerWidget {
                   color: AppTheme.headerSurface,
                   border: Border(bottom: BorderSide(color: AppTheme.outline)),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 28),
+                padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Row(children: [
                   Text(
                     sectionTitle,

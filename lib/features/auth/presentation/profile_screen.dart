@@ -166,52 +166,82 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         await showModalBottomSheet<({String? userId, bool add, bool remove})>(
       context: context,
       useSafeArea: true,
+      isScrollControlled: true,
       showDragHandle: true,
-      builder: (sheetContext) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(ProfileStrings.savedAccounts,
-                style: Theme.of(sheetContext).textTheme.titleLarge),
-          ),
-          const SizedBox(height: 8),
-          for (final account in accounts)
-            ListTile(
-              leading: CircleAvatar(
-                backgroundColor:
-                    account.isActive ? AppTheme.mint : AppTheme.neutralSurface,
-                child: Icon(
-                    account.isActive ? Icons.check : Icons.person_outline,
-                    color: AppTheme.forest),
-              ),
-              title: Text(account.user.fullName),
-              subtitle: Text(
-                  '${account.user.phone} · ${RoleStrings.label(account.user.role)}'),
-              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                if (account.isActive)
-                  const Icon(Icons.radio_button_checked,
-                      color: AppTheme.forest),
-                IconButton(
-                  tooltip: ProfileStrings.removeLocalAccount,
-                  onPressed: () => Navigator.pop(sheetContext,
-                      (userId: account.user.id, add: false, remove: true)),
-                  icon: const Icon(Icons.delete_outline),
+      builder: (sheetContext) => SizedBox(
+        height: MediaQuery.sizeOf(sheetContext).height * 0.68,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(ProfileStrings.savedAccounts,
+                  style: Theme.of(sheetContext).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: accounts.length + 1,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    if (index == accounts.length) {
+                      return ListTile(
+                        leading: const Icon(Icons.person_add_alt_1_outlined),
+                        title: const Text(ProfileStrings.addLocalAccount),
+                        onTap: () => Navigator.pop(sheetContext,
+                            (userId: null, add: true, remove: false)),
+                      );
+                    }
+                    final account = accounts[index];
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                      leading: CircleAvatar(
+                        backgroundColor: account.isActive
+                            ? AppTheme.mint
+                            : AppTheme.neutralSurface,
+                        child: Icon(
+                            account.isActive
+                                ? Icons.check
+                                : Icons.person_outline,
+                            color: AppTheme.forest),
+                      ),
+                      title: Text(
+                        account.user.fullName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        '${account.user.phone} · ${RoleStrings.label(account.user.role)}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                        if (account.isActive)
+                          const Icon(Icons.radio_button_checked,
+                              color: AppTheme.forest),
+                        IconButton(
+                          tooltip: ProfileStrings.removeLocalAccount,
+                          onPressed: () => Navigator.pop(sheetContext, (
+                            userId: account.user.id,
+                            add: false,
+                            remove: true
+                          )),
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                      ]),
+                      onTap: account.isActive
+                          ? null
+                          : () => Navigator.pop(sheetContext, (
+                                userId: account.user.id,
+                                add: false,
+                                remove: false
+                              )),
+                    );
+                  },
                 ),
-              ]),
-              onTap: account.isActive
-                  ? null
-                  : () => Navigator.pop(sheetContext,
-                      (userId: account.user.id, add: false, remove: false)),
-            ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.person_add_alt_1_outlined),
-            title: const Text(ProfileStrings.addLocalAccount),
-            onTap: () => Navigator.pop(
-                sheetContext, (userId: null, add: true, remove: false)),
+              ),
+            ],
           ),
-        ]),
+        ),
       ),
     );
     if (action == null || !mounted) return;

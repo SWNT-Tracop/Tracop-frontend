@@ -65,6 +65,7 @@ class OrderResponse {
     required this.acceptedAt,
     required this.cancelReason,
     required this.quoteValidUntil,
+    this.isLocallyPaid = false,
     this.provider,
     this.deliveryAddress,
     this.deliveryWindow,
@@ -82,6 +83,24 @@ class OrderResponse {
   final DateTime? acceptedAt;
   final String? cancelReason;
   final DateTime quoteValidUntil;
+  final bool isLocallyPaid;
+
+  OrderResponse copyWith({String? status, bool? isLocallyPaid}) =>
+      OrderResponse(
+        id: id,
+        status: status ?? this.status,
+        version: version,
+        createdAt: createdAt,
+        lines: lines,
+        amounts: amounts,
+        provider: provider,
+        deliveryAddress: deliveryAddress,
+        deliveryWindow: deliveryWindow,
+        acceptedAt: acceptedAt,
+        cancelReason: cancelReason,
+        quoteValidUntil: quoteValidUntil,
+        isLocallyPaid: isLocallyPaid ?? this.isLocallyPaid,
+      );
 
   factory OrderResponse.fromJson(Map<String, dynamic> json) => OrderResponse(
         id: json['id'] as String,
@@ -105,6 +124,7 @@ class OrderResponse {
         acceptedAt: DateTime.tryParse(json['acceptedAt'] as String? ?? ''),
         cancelReason: json['cancelReason'] as String?,
         quoteValidUntil: DateTime.parse(json['quoteValidUntil'] as String),
+        isLocallyPaid: json['isLocallyPaid'] as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -124,6 +144,7 @@ class OrderResponse {
         'acceptedAt': acceptedAt?.toIso8601String(),
         'cancelReason': cancelReason,
         'quoteValidUntil': quoteValidUntil.toIso8601String(),
+        'isLocallyPaid': isLocallyPaid,
       };
 }
 
