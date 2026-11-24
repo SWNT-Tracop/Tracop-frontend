@@ -66,13 +66,6 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
 
   bool get _offline => ref.read(homeConnectivityProvider).valueOrNull == false;
 
-  // Sin conexion la accion fallaria; se avisa antes de confirmar.
-  bool _ensureOnline() {
-    if (!_offline) return true;
-    _showMessage(_S.needsConnection, error: true);
-    return false;
-  }
-
   void _rememberModification(String lotId) {
     ref.read(localLotModifiedAtProvider.notifier).state = {
       ...ref.read(localLotModifiedAtProvider),
@@ -110,7 +103,7 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
   }
 
   Future<void> _publish(Lot lot) async {
-    if (_busy || !_ensureOnline()) return;
+    if (_busy) return;
     final confirmed = await _confirm(
       title: _S.publishTitle,
       message: _S.publishBody,
@@ -126,7 +119,7 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
     result.map(
       ok: (_) {
         _rememberModification(lot.id);
-        _showMessage(_S.published1);
+        _showMessage(_offline ? _S.publishedPending : _S.published1);
         ref.invalidate(lotByIdProvider(lot.id));
         _refresh();
       },
@@ -138,7 +131,7 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
   }
 
   Future<void> _cancel(Lot lot) async {
-    if (_busy || !_ensureOnline()) return;
+    if (_busy) return;
     final confirmed = await _confirm(
       title: _S.cancelTitle,
       message: _S.cancelBody,
@@ -155,7 +148,7 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
     result.map(
       ok: (_) {
         _rememberModification(lot.id);
-        _showMessage(_S.cancelled1);
+        _showMessage(_offline ? _S.cancelledPending : _S.cancelled1);
         ref.invalidate(lotByIdProvider(lot.id));
         _refresh();
       },
@@ -167,7 +160,7 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
   }
 
   Future<void> _delete(Lot lot) async {
-    if (_busy || !_ensureOnline()) return;
+    if (_busy) return;
     final confirmed = await _confirm(
       title: _S.deleteTitle,
       message: _S.deleteBody,
@@ -187,7 +180,7 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
             Map<String, DateTime>.of(ref.read(localLotModifiedAtProvider))
               ..remove(lot.id);
         ref.read(localLotModifiedAtProvider.notifier).state = modifiedAt;
-        _showMessage(_S.deleted);
+        _showMessage(_offline ? _S.deletedPending : _S.deleted);
         ref.invalidate(lotByIdProvider(lot.id));
         _refresh();
       },
@@ -215,6 +208,8 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
     final offline = ref.watch(homeConnectivityProvider).valueOrNull == false;
     final allLots = lots.valueOrNull ?? const <Lot>[];
     final localModifiedAt = ref.watch(localLotModifiedAtProvider);
+    final outboxStatuses = ref.watch(lotSyncStatusesProvider).valueOrNull ??
+        const <String, String>{};
     final originalOrder = {
       for (var i = 0; i < allLots.length; i++) allLots[i].id: i
     };
@@ -491,6 +486,10 @@ class _MyLotsScreenState extends ConsumerState<MyLotsScreen> {
                                 onPublish: () => _publish(lot),
                                 onCancel: () => _cancel(lot),
                                 onDelete: () => _delete(lot),
+                                syncStatus: outboxStatuses[lot.id] ??
+                                    (localModifiedAt.containsKey(lot.id)
+                                        ? 'synchronized'
+                                        : null),
                               ),
                             ),
                           );
@@ -576,6 +575,7 @@ class _LotCard extends StatelessWidget {
     required this.onPublish,
     required this.onCancel,
     required this.onDelete,
+    this.syncStatus,
     super.key,
   });
 
@@ -587,6 +587,7 @@ class _LotCard extends StatelessWidget {
   final VoidCallback onPublish;
   final VoidCallback onCancel;
   final VoidCallback onDelete;
+  final String? syncStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -647,6 +648,10 @@ class _LotCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
+            if (syncStatus != null) ...[
+              _LotSyncBadge(status: syncStatus!),
+              const SizedBox(height: 6),
+            ],
             Row(
               children: [
                 const Icon(Icons.event_available_outlined,
@@ -796,6 +801,45 @@ class _StatusBadge extends StatelessWidget {
           ),
         ),
       );
+}
+
+class _LotSyncBadge extends StatelessWidget {
+  const _LotSyncBadge({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, icon, color) = switch (status) {
+      'pending' => (
+          'Pendiente de sincronización',
+          Icons.schedule,
+          AppTheme.warningIcon
+        ),
+      'conflict' => (
+          'Conflicto: revisar sincronización',
+          Icons.warning_amber,
+          AppTheme.dangerStrong
+        ),
+      'rejected' => (
+          'No se pudo sincronizar',
+          Icons.error_outline,
+          AppTheme.dangerStrong
+        ),
+      _ => ('Sincronizado', Icons.cloud_done_outlined, AppTheme.forest),
+    };
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 6),
+        Text(label,
+            style: Theme.of(context)
+                .textTheme
+                .labelMedium
+                ?.copyWith(color: color, fontWeight: FontWeight.w600)),
+      ],
+    );
+  }
 }
 
 ({String label, Color foreground, Color background}) _statusStyle(

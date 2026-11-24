@@ -171,6 +171,19 @@ class SyncService {
         .go();
   }
 
+  Future<Map<String, String>> lotOperationStatuses(String userId) async {
+    final rows = await (_database.select(_database.outboxOperations)
+          ..where((row) =>
+              row.ownerUserId.equals(userId) & row.entity.equals('lot'))
+          ..orderBy([(row) => OrderingTerm.desc(row.clientTs)]))
+        .get();
+    final statuses = <String, String>{};
+    for (final row in rows) {
+      statuses.putIfAbsent(row.entityId, () => row.status);
+    }
+    return statuses;
+  }
+
   Future<void> _applyChange(String userId, Map<String, dynamic> change) async {
     final entity = change['entity'] as String?;
     final entityId = change['entityId'] as String?;

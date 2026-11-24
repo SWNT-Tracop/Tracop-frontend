@@ -43,7 +43,7 @@ void main() {
     expect(find.text('Lote publicado.'), findsOneWidget);
   });
 
-  testWidgets('my lots explains that publishing needs a connection',
+  testWidgets('my lots allows publishing offline with confirmation',
       (tester) async {
     app_router.router.go('/lotes');
     await tester.binding.setSurfaceSize(const Size(390, 844));
@@ -57,13 +57,18 @@ void main() {
     await tester.tap(find.byTooltip('Publicar lote').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('Necesitas conexión para hacer este cambio.'),
-        findsOneWidget);
     expect(
         find.text('El lote quedará visible para los compradores con la '
             'información actual.'),
-        findsNothing);
-    expect(repository.publishCalls, 0);
+        findsOneWidget);
+    await tester.tap(find.text('Publicar').last);
+    await tester.pumpAndSettle();
+
+    expect(
+        find.text('Publicación guardada en este dispositivo. Pendiente de '
+            'sincronización.'),
+        findsOneWidget);
+    expect(repository.publishCalls, 1);
   });
 
   testWidgets('lot form asks before leaving with unsaved changes',
@@ -237,8 +242,7 @@ void main() {
     expect(find.text('Lote publicado correctamente.'), findsOneWidget);
   });
 
-  testWidgets('offline save button explains why it cannot save',
-      (tester) async {
+  testWidgets('offline save stores the lot locally', (tester) async {
     app_router.router.go('/lotes/nuevo');
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -246,15 +250,25 @@ void main() {
     await tester.pumpWidget(_testApp(repository, connected: false));
     await tester.pumpAndSettle();
 
+    await _scrollTo(tester, find.byKey(const ValueKey('lot-product-selector')));
+    await tester.tap(find.byKey(const ValueKey('lot-product-selector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tomate chonto · kg').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Cantidad'), '25');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Precio por unidad'), '3200');
+    await tester.enterText(find.widgetWithText(TextField, 'Latitud'), '5.5353');
+    await tester.enterText(find.widgetWithText(TextField, 'Longitud'), '-73.3');
     await _scrollTo(tester, find.text('Guardar borrador').last);
     await tester.tap(find.text('Guardar borrador').last);
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Conéctate a internet para guardar el lote.'),
-      findsOneWidget,
-    );
-    expect(repository.created, isNull);
+        find.text('Lote guardado en este dispositivo. Pendiente de '
+            'sincronización.'),
+        findsOneWidget);
+    expect(repository.created, isNotNull);
   });
 
   testWidgets('producer can create a product from the lot form',

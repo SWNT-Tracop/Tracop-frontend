@@ -253,14 +253,6 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
     FocusScope.of(context).unfocus();
     final wasEditing = isEditing;
     final offline = ref.read(homeConnectivityProvider).valueOrNull == false;
-    if (offline) {
-      setState(() {
-        _fieldErrors = {};
-        _formError = 'Conéctate a internet para guardar el lote.';
-      });
-      _revealValidation();
-      return;
-    }
     final errors = _validateFields();
     if (errors.isNotEmpty) {
       setState(() {
@@ -354,7 +346,9 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
       _existingVersion = saved.version;
     }
 
-    for (final pending in List<_PendingLotPhoto>.from(_pendingPhotos)) {
+    for (final pending in offline
+        ? const <_PendingLotPhoto>[]
+        : List<_PendingLotPhoto>.from(_pendingPhotos)) {
       final photoResult = await repo.uploadLotPhoto(
         lotId: saved.id,
         photoId: pending.id,
@@ -399,13 +393,17 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
       saved.id: DateTime.now(),
     };
     _invalidateLotViews(saved.id);
-    final message = publishFailure != null
-        ? 'Guardado como borrador. No se pudo publicar: ${lotErrorText(publishFailure)}'
-        : publish
-            ? 'Lote publicado correctamente.'
-            : wasEditing
-                ? 'Cambios guardados correctamente.'
-                : 'Borrador guardado correctamente.';
+    final message = offline
+        ? (publish
+            ? 'Lote guardado localmente y pendiente de publicación.'
+            : 'Lote guardado en este dispositivo. Pendiente de sincronización.')
+        : publishFailure != null
+            ? 'Guardado como borrador. No se pudo publicar: ${lotErrorText(publishFailure)}'
+            : publish
+                ? 'Lote publicado correctamente.'
+                : wasEditing
+                    ? 'Cambios guardados correctamente.'
+                    : 'Borrador guardado correctamente.';
     final messenger = ScaffoldMessenger.of(context);
     final router = GoRouter.of(context);
     final confirmation = SnackBar(
