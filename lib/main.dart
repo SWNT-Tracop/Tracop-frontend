@@ -38,7 +38,14 @@ Future<void> main() async {
       remote: authRemote, db: db, secureStorage: const FlutterSecureStorage());
 
   final catalogRemote = CatalogRemoteDataSourceImpl(dioClient);
-  final catalogRepo = CatalogRepositoryImpl(remote: catalogRemote, db: db);
+  final catalogRepo = CatalogRepositoryImpl(
+    remote: catalogRemote,
+    db: db,
+    ownerUserId: () async {
+      final stored = await authRepo.getStoredUser();
+      return stored.map(ok: (value) => value.value?.id, err: (_) => null);
+    },
+  );
   final orderRemote = OrderRemoteDataSourceImpl(dioClient);
   final orderRepo = OrderRepositoryImpl(remote: orderRemote, db: db);
   final logisticsRepo = LogisticsRepository(

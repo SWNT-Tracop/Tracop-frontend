@@ -1,7 +1,9 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:drift/drift.dart';
+import 'package:uuid/uuid.dart';
 import '../../../../core/result/result.dart';
 import '../../../../core/storage/app_database.dart' hide Category, Product, Lot;
 import '../remote/catalog_remote.dart';
@@ -13,8 +15,14 @@ import '../../domain/repository/catalog_repository.dart';
 class CatalogRepositoryImpl implements CatalogRepository {
   final CatalogRemoteDataSource remote;
   final AppDatabase db;
+  final Future<String?> Function()? ownerUserId;
+  static const _uuid = Uuid();
 
-  CatalogRepositoryImpl({required this.remote, required this.db});
+  CatalogRepositoryImpl({
+    required this.remote,
+    required this.db,
+    this.ownerUserId,
+  });
 
   @override
   Future<Result<List<Category>, DomainFailure>> getCategories() async {
@@ -357,6 +365,20 @@ class CatalogRepositoryImpl implements CatalogRepository {
 
   @override
   Future<Result<Lot, DomainFailure>> createLot(CreateLotRequest request) async {
+    if (await _isOffline()) {
+      final userId = await _ownerId();
+      if (userId == null) return _offlineOwnerError();
+      final lot = _optimisticLot(request.toJson(),
+          providerId: userId, status: 'draft', version: 1);
+      await _enqueueLot(
+        ownerUserId: userId,
+        entityId: request.id,
+        type: 'create',
+        payload: request.toJson(),
+      );
+      await _rememberLot(lot);
+      return Ok(lot);
+    }
     try {
       final json = await remote.createLot(request.toJson());
       final lot = Lot.fromJson({...json, 'isMine': true});
@@ -373,6 +395,27 @@ class CatalogRepositoryImpl implements CatalogRepository {
   @override
   Future<Result<Lot, DomainFailure>> updateLot(
       String id, UpdateLotRequest request) async {
+    if (await _isOffline()) {
+      final userId = await _ownerId();
+      final current = await _readLotCache(id);
+      if (userId == null || current == null) return _offlineOwnerError();
+      final patch = Map<String, dynamic>.from(request.toJson())
+        ..remove('version');
+      final merged = current.toJson()..addAll(patch);
+      final lot = _optimisticLot(merged,
+          providerId: current.providerId ?? userId,
+          status: current.status,
+          version: request.version + 1);
+      await _enqueueLot(
+        ownerUserId: userId,
+        entityId: id,
+        type: 'update',
+        baseVersion: request.version,
+        payload: patch,
+      );
+      await _rememberLot(lot);
+      return Ok(lot);
+    }
     try {
       final json = await remote.updateLot(id, request.toJson());
       final lot = Lot.fromJson({...json, 'isMine': true});
@@ -388,6 +431,7 @@ class CatalogRepositoryImpl implements CatalogRepository {
 
   @override
   Future<Result<Lot, DomainFailure>> publishLot(String id, int version) async {
+    if (await _isOffline()) return _queueTransition(id, version, 'published');
     try {
       final json = await remote.publishLot(
           id, PublishCancelRequest(version: version).toJson());
@@ -404,6 +448,7 @@ class CatalogRepositoryImpl implements CatalogRepository {
 
   @override
   Future<Result<Lot, DomainFailure>> cancelLot(String id, int version) async {
+    if (await _isOffline()) return _queueTransition(id, version, 'cancelled');
     try {
       final json = await remote.cancelLot(
           id, PublishCancelRequest(version: version).toJson());
@@ -420,6 +465,19 @@ class CatalogRepositoryImpl implements CatalogRepository {
 
   @override
   Future<Result<void, DomainFailure>> deleteLot(String id, int version) async {
+    if (await _isOffline()) {
+      final userId = await _ownerId();
+      if (userId == null) return _offlineOwnerError<void>();
+      await _enqueueLot(
+        ownerUserId: userId,
+        entityId: id,
+        type: 'delete',
+        baseVersion: version,
+        payload: const {},
+      );
+      await _forgetLot(id);
+      return const Ok(null);
+    }
     try {
       await remote.deleteLot(
           id, PublishCancelRequest(version: version).toJson());
@@ -530,6 +588,91 @@ class CatalogRepositoryImpl implements CatalogRepository {
           '_cachedAt': cachedAt.toIso8601String(),
         }));
     return lot.photos;
+  }
+
+  Future<bool> _isOffline() async {
+    final connectivity = await Connectivity().checkConnectivity();
+    return !connectivity.any((item) => item != ConnectivityResult.none);
+  }
+
+  Future<String?> _ownerId() async {
+    final provided = ownerUserId;
+    if (provided != null) return provided();
+    final row = await (db.select(db.users)
+          ..orderBy([(item) => OrderingTerm.desc(item.updatedAt)])
+          ..limit(1))
+        .getSingleOrNull();
+    return row?.id;
+  }
+
+  Future<Result<T, DomainFailure>> _offlineOwnerError<T>() async =>
+      const Err(DomainFailure(
+        statusCode: 401,
+        code: 'offline_session_missing',
+        message: 'No hay una sesión local disponible para guardar el cambio.',
+      ));
+
+  Future<void> _enqueueLot({
+    required String ownerUserId,
+    required String entityId,
+    required String type,
+    required Map<String, dynamic> payload,
+    int? baseVersion,
+  }) async {
+    final now = DateTime.now().toUtc();
+    await db.into(db.outboxOperations).insert(
+          OutboxOperationsCompanion.insert(
+            opId: _uuid.v7(),
+            ownerUserId: Value(ownerUserId),
+            entity: 'lot',
+            entityId: entityId,
+            type: type,
+            payloadJson: jsonEncode(payload),
+            baseVersion: Value(baseVersion),
+            clientTs: now,
+            status: 'pending',
+            attempts: 0,
+            nextAttemptAt: now,
+          ),
+        );
+  }
+
+  Future<Result<Lot, DomainFailure>> _queueTransition(
+      String id, int version, String status) async {
+    final userId = await _ownerId();
+    final current = await _readLotCache(id);
+    if (userId == null || current == null) return _offlineOwnerError();
+    final lot = _optimisticLot(current.toJson(),
+        providerId: current.providerId ?? userId,
+        status: status,
+        version: version + 1);
+    await _enqueueLot(
+      ownerUserId: userId,
+      entityId: id,
+      type: 'transition',
+      baseVersion: version,
+      payload: {'status': status},
+    );
+    await _rememberLot(lot);
+    return Ok(lot);
+  }
+
+  Lot _optimisticLot(
+    Map<String, dynamic> json, {
+    required String providerId,
+    required String status,
+    required int version,
+  }) {
+    return Lot.fromJson({
+      ...json,
+      'providerId': providerId,
+      'quantityMilli': '${json['quantityMilli']}',
+      'unitPrice': '${json['unitPrice']}',
+      'status': status,
+      'version': version,
+      'isMine': true,
+      'photos': json['photos'] ?? const [],
+    });
   }
 
   Future<void> _rememberLot(Lot lot) async {

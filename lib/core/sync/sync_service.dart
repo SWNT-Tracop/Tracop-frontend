@@ -54,6 +54,63 @@ class SyncService {
     );
   }
 
+  Future<void> pushPending({required String userId}) async {
+    final connection = await Connectivity().checkConnectivity();
+    if (!connection.any((item) => item != ConnectivityResult.none)) return;
+    final pending = await (_database.select(_database.outboxOperations)
+          ..where((row) =>
+              row.ownerUserId.equals(userId) &
+              row.status.equals('pending') &
+              row.nextAttemptAt.isSmallerOrEqualValue(DateTime.now().toUtc()))
+          ..orderBy([(row) => OrderingTerm.asc(row.clientTs)])
+          ..limit(50))
+        .get();
+    if (pending.isEmpty) return;
+    try {
+      final response = await _client.instance.post('/sync/push', data: {
+        'operations': pending
+            .map((operation) => <String, dynamic>{
+                  'opId': operation.opId,
+                  'entity': operation.entity,
+                  'entityId': operation.entityId,
+                  'type': operation.type,
+                  'payload': jsonDecode(operation.payloadJson),
+                  if (operation.baseVersion != null)
+                    'baseVersion': operation.baseVersion,
+                })
+            .toList(growable: false),
+      });
+      final results = (response.data['results'] as List<dynamic>)
+          .map((item) => Map<String, dynamic>.from(item as Map));
+      for (final result in results) {
+        final opId = result['opId'] as String;
+        if (result['status'] == 'applied') {
+          await (_database.delete(_database.outboxOperations)
+                ..where((row) => row.opId.equals(opId)))
+              .go();
+        } else {
+          await (_database.update(_database.outboxOperations)
+                ..where((row) => row.opId.equals(opId)))
+              .write(OutboxOperationsCompanion(
+            status: Value(result['status'] as String? ?? 'rejected'),
+            lastError: Value(result['code'] as String? ?? 'sync_failed'),
+          ));
+        }
+      }
+    } catch (error) {
+      for (final operation in pending) {
+        await (_database.update(_database.outboxOperations)
+              ..where((row) => row.opId.equals(operation.opId)))
+            .write(OutboxOperationsCompanion(
+          attempts: Value(operation.attempts + 1),
+          nextAttemptAt:
+              Value(DateTime.now().toUtc().add(const Duration(minutes: 1))),
+          lastError: Value(error.toString()),
+        ));
+      }
+    }
+  }
+
   Future<SyncResult> pullAll(
       {required String userId, int pageSize = 200}) async {
     var total = 0;

@@ -47,6 +47,7 @@ class _TracopAppState extends ConsumerState<TracopApp> {
     if (session?.accessToken.isEmpty != false) return;
     try {
       await ref.read(logisticsRepositoryProvider).syncPending(session!.user.id);
+      await ref.read(syncServiceProvider).pushPending(userId: session.user.id);
       await ref.read(syncServiceProvider).pullAll(userId: session.user.id);
       ref.read(syncRevisionProvider.notifier).state++;
     } catch (_) {
