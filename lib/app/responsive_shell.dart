@@ -72,6 +72,58 @@ class ResponsiveShell extends ConsumerWidget {
         icon: now ? Icons.cloud_done_outlined : Icons.cloud_off_outlined);
   }
 
+  Future<void> _showConnectivityDetails(
+      BuildContext context, bool? connected) async {
+    final isConnected = connected == true;
+    final title = connected == null
+        ? SyncStrings.checking
+        : isConnected
+            ? SyncStrings.connectedToInternet
+            : SyncStrings.noInternetConnection;
+    final body = connected == null
+        ? 'Estamos verificando el acceso a internet.'
+        : isConnected
+            ? 'Tu dispositivo puede comunicarse con TRACOP.'
+            : SyncStrings.connectionDialogHint;
+    final icon = connected == null
+        ? Icons.cloud_sync_outlined
+        : isConnected
+            ? Icons.cloud_done_outlined
+            : Icons.cloud_off_outlined;
+    final color = connected == true ? AppTheme.forest : AppTheme.earth;
+    final content = _ConnectivityMessage(
+      title: title,
+      body: body,
+      icon: icon,
+      color: color,
+    );
+    if (MediaQuery.sizeOf(context).width < _compactBreakpoint) {
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (_) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+            child: content,
+          ),
+        ),
+      );
+    } else {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          content: content,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(SyncStrings.connectionDialogAction),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.listen(homeConnectivityProvider, _onConnectivityChange);
@@ -164,11 +216,15 @@ class ResponsiveShell extends ConsumerWidget {
               actions: [
                 Tooltip(
                   message: syncLabel,
-                  child: Semantics(
-                    label: syncLabel,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Icon(syncIcon, color: syncColor, size: 22),
+                  child: InkWell(
+                    onTap: () => _showConnectivityDetails(context, connected),
+                    borderRadius: BorderRadius.circular(24),
+                    child: Semantics(
+                      label: syncLabel,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Icon(syncIcon, color: syncColor, size: 22),
+                      ),
                     ),
                   ),
                 ),
@@ -257,7 +313,11 @@ class ResponsiveShell extends ConsumerWidget {
                   ),
                   const Spacer(),
                   _SyncBadge(
-                      label: syncLabel, icon: syncIcon, color: syncColor),
+                      label: syncLabel,
+                      icon: syncIcon,
+                      color: syncColor,
+                      onTap: () =>
+                          _showConnectivityDetails(context, connected)),
                   const SizedBox(width: 18),
                   InkWell(
                     onTap: () => _guardedGo(context, '/perfil'),
@@ -308,24 +368,61 @@ class _SyncBadge extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.color,
+    required this.onTap,
   });
 
   final String label;
   final IconData icon;
   final Color color;
+  final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.all(8),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 20, color: color),
-          const SizedBox(width: 8),
-          Text(label,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: color, fontSize: 14)),
-        ]),
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 20, color: color),
+            const SizedBox(width: 8),
+            Text(label,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(color: color, fontSize: 14)),
+          ]),
+        ),
+      );
+}
+
+class _ConnectivityMessage extends StatelessWidget {
+  const _ConnectivityMessage({
+    required this.title,
+    required this.body,
+    required this.icon,
+    required this.color,
+  });
+
+  final String title;
+  final String body;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(icon, color: color, size: 26),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          Text(body, style: Theme.of(context).textTheme.bodyMedium),
+        ],
       );
 }
 

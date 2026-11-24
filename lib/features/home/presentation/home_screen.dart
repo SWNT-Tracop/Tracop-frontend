@@ -1,10 +1,12 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/config/env.dart';
 import '../../../core/sync/sync_provider.dart';
 import '../../../core/i18n/strings.dart';
 import '../../../shared/widgets/lot_interaction_widgets.dart';
@@ -36,13 +38,30 @@ final homeLotsProvider = FutureProvider<List<Lot>>((ref) async {
 });
 
 final homeConnectivityProvider = StreamProvider<bool>((ref) async* {
-  final connectivity = Connectivity();
-  bool isConnected(List<ConnectivityResult> results) =>
-      results.any((result) => result != ConnectivityResult.none);
-
-  yield isConnected(await connectivity.checkConnectivity());
-  yield* connectivity.onConnectivityChanged.map(isConnected);
+  yield await _hasInternetConnection();
+  await for (final _ in Stream<void>.periodic(const Duration(seconds: 10))) {
+    yield await _hasInternetConnection();
+  }
 });
+
+Future<bool> _hasInternetConnection() async {
+  final transport = await Connectivity().checkConnectivity();
+  if (!transport.any((item) => item != ConnectivityResult.none)) return false;
+  final client = Dio(BaseOptions(
+    baseUrl: AppConfig.apiBaseUrl,
+    connectTimeout: const Duration(seconds: 3),
+    receiveTimeout: const Duration(seconds: 3),
+    sendTimeout: const Duration(seconds: 3),
+  ));
+  try {
+    final response = await client.get<void>('/health');
+    return response.statusCode != null && response.statusCode! < 500;
+  } catch (_) {
+    return false;
+  } finally {
+    client.close(force: true);
+  }
+}
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});

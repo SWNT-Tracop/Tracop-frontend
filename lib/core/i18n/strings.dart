@@ -14,6 +14,11 @@ abstract final class NavStrings {
 abstract final class SyncStrings {
   static const checking = 'Comprobando conexión';
   static const offline = 'Sin conexión';
+  static const connectedToInternet = 'Conectado a internet';
+  static const noInternetConnection = 'No tienes conexión en este momento';
+  static const connectionDialogHint =
+      'Puedes seguir consultando la información guardada en este dispositivo.';
+  static const connectionDialogAction = 'Entendido';
   static const updating = 'Actualizando';
   static const failed = 'No se pudo actualizar';
   static const upToDate = 'Al día';
