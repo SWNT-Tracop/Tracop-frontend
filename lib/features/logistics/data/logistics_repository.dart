@@ -1,19 +1,23 @@
 import 'dart:convert';
 
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/storage/app_database.dart';
+import '../../../core/sync/sync_service.dart';
 import 'logistics_remote.dart';
 import '../domain/logistics_models.dart';
 
 class LogisticsRepository {
-  LogisticsRepository({required this.remote, required this.database});
+  LogisticsRepository({
+    required this.remote,
+    required this.database,
+    this.syncService,
+  });
 
   final LogisticsRemoteDataSource remote;
   final AppDatabase database;
+  final SyncService? syncService;
   static const _uuid = Uuid();
   static const _localPaymentCandidatesKey =
       'logistics:local-payment-candidates';
@@ -326,75 +330,7 @@ class LogisticsRepository {
   }
 
   Future<void> syncPending(String userId) async {
-    final pending = await (database.select(database.outboxOperations)
-          ..where((row) =>
-              row.ownerUserId.equals(userId) & row.status.equals('pending'))
-          ..orderBy([(row) => OrderingTerm.asc(row.clientTs)])
-          ..limit(50))
-        .get();
-    if (pending.isEmpty) return;
-
-    try {
-      final connection = await Connectivity().checkConnectivity();
-      if (!connection.any((item) => item != ConnectivityResult.none)) return;
-      final body = pending
-          .map((operation) => <String, dynamic>{
-                'opId': operation.opId,
-                'entity': operation.entity,
-                'entityId': operation.entityId,
-                'type': operation.type,
-                'payload': jsonDecode(operation.payloadJson),
-                if (operation.baseVersion != null)
-                  'baseVersion': operation.baseVersion,
-              })
-          .toList(growable: false);
-      final response = await remote.push(body);
-      final results = (response['results'] as List)
-          .map((item) => Map<String, dynamic>.from(item as Map));
-      for (final result in results) {
-        final opId = result['opId'] as String;
-        if (result['status'] == 'applied') {
-          await (database.delete(database.outboxOperations)
-                ..where((row) => row.opId.equals(opId)))
-              .go();
-        } else {
-          await (database.update(database.outboxOperations)
-                ..where((row) => row.opId.equals(opId)))
-              .write(OutboxOperationsCompanion(
-            status: Value(result['status'] as String),
-            lastError: Value(result['code'] as String? ?? 'sync_failed'),
-          ));
-        }
-      }
-    } catch (error) {
-      final errorCode = _syncErrorCode(error);
-      for (final operation in pending) {
-        await (database.update(database.outboxOperations)
-              ..where((row) => row.opId.equals(operation.opId)))
-            .write(OutboxOperationsCompanion(
-          attempts: Value(operation.attempts + 1),
-          nextAttemptAt: Value(DateTime.now().add(const Duration(minutes: 1))),
-          lastError: Value(errorCode),
-        ));
-      }
-    }
-  }
-
-  String _syncErrorCode(Object error) {
-    if (error is DioException) {
-      final status = error.response?.statusCode;
-      if (status != null) return 'http_$status';
-      return switch (error.type) {
-        DioExceptionType.connectionTimeout ||
-        DioExceptionType.sendTimeout ||
-        DioExceptionType.receiveTimeout =>
-          'timeout',
-        DioExceptionType.connectionError => 'network_unreachable',
-        DioExceptionType.cancel => 'request_cancelled',
-        _ => 'network_error',
-      };
-    }
-    return 'sync_response_invalid';
+    await syncService?.pushPending(userId: userId);
   }
 
   Future<void> _enqueue({

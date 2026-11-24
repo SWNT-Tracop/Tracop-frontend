@@ -48,11 +48,12 @@ Future<void> main() async {
   );
   final orderRemote = OrderRemoteDataSourceImpl(dioClient);
   final orderRepo = OrderRepositoryImpl(remote: orderRemote, db: db);
+  final syncService = SyncService(client: dioClient, database: db);
   final logisticsRepo = LogisticsRepository(
     remote: LogisticsRemoteDataSource(dioClient),
     database: db,
+    syncService: syncService,
   );
-  final syncService = SyncService(client: dioClient, database: db);
 
   dioClient.setRefreshHandler(() async {
     final stored = await authRepo.getStoredRefreshToken();
