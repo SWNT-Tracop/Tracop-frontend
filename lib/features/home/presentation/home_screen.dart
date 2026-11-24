@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/sync/sync_provider.dart';
 import '../../../core/i18n/strings.dart';
 import '../../../shared/widgets/lot_interaction_widgets.dart';
 import '../../auth/domain/entities/user.dart';
@@ -23,6 +24,7 @@ final homeUserProvider = FutureProvider<User?>((ref) async {
 });
 
 final homeLotsProvider = FutureProvider<List<Lot>>((ref) async {
+  ref.watch(syncRevisionProvider);
   final result = await ref.read(catalogRepositoryProvider).getMyLots();
   return result.map(
     ok: (value) {
