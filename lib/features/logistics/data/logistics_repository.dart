@@ -17,6 +17,38 @@ class LogisticsRepository {
   static const _uuid = Uuid();
   static const _localPaymentCandidatesKey =
       'logistics:local-payment-candidates';
+  static const _remoteChangesPrefix = 'sync:unapplied-changes:';
+
+  /// Applies changes received by the generic sync service to logistics caches.
+  ///
+  /// A check-in is kept until its stops cache exists, because the sync payload
+  /// identifies the stop but does not contain the complete stop projection.
+  Future<void> applyRemoteChanges(String userId) async {
+    final key = '$_remoteChangesPrefix$userId';
+    final changes = await _readCache(key);
+    if (changes == null || changes.isEmpty) return;
+
+    final remaining = <Map<String, dynamic>>[];
+    for (final change in changes) {
+      final entity = change['entity'] as String?;
+      final payload = Map<String, dynamic>.from(
+        (change['payload'] as Map?)?.cast<String, dynamic>() ?? const {},
+      );
+      final applied = switch (entity) {
+        'trip' => await _applyRemoteTrip(userId, change, payload),
+        'checkin' => await _applyRemoteCheckin(userId, payload),
+        _ => true,
+      };
+      if (!applied) remaining.add(change);
+    }
+    if (remaining.isEmpty) {
+      await (database.delete(database.syncState)
+            ..where((row) => row.key.equals(key)))
+          .go();
+    } else {
+      await _saveCache(key, remaining);
+    }
+  }
 
   Future<List<OrderCandidate>> getCandidates(String userId) async {
     final cacheKey = 'logistics:$userId:candidates';
@@ -41,6 +73,54 @@ class LogisticsRepository {
         .where((candidate) => !queued.contains(candidate.orderId))
         .toList(growable: false);
   }
+
+  Future<bool> _applyRemoteTrip(String userId, Map<String, dynamic> change,
+      Map<String, dynamic> payload) async {
+    final id = change['entityId'] as String?;
+    if (id == null) return true;
+    final key = 'logistics:$userId:trips';
+    final trips = await _readCache(key) ?? [];
+    final index = trips.indexWhere((trip) => trip['id'] == id);
+    final current = index >= 0 ? trips[index] : <String, dynamic>{};
+    final version = _asInt(payload['version'], current['version'] ?? 1);
+    if (index >= 0 && version < _asInt(current['version'], 1)) return true;
+    final merged = <String, dynamic>{
+      ...current,
+      'id': id,
+      'status': payload['status'] as String? ?? current['status'] ?? 'planned',
+      'version': version,
+      'plannedAt': current['plannedAt'] ??
+          (change['occurredAt'] as String? ??
+              DateTime.now().toUtc().toIso8601String()),
+      'isLocalOnly': false,
+    };
+    if (index >= 0) {
+      trips[index] = merged;
+    } else {
+      trips.add(merged);
+    }
+    await _saveCache(key, trips);
+    return true;
+  }
+
+  Future<bool> _applyRemoteCheckin(
+      String userId, Map<String, dynamic> payload) async {
+    final tripId = payload['tripId'] as String?;
+    final stopId = payload['stopId'] as String?;
+    if (tripId == null || stopId == null) return true;
+    final key = 'logistics:$userId:stops:$tripId';
+    final stops = await _readCache(key);
+    if (stops == null) return false;
+    final index = stops.indexWhere((stop) => stop['id'] == stopId);
+    if (index < 0) return true;
+    stops[index]['completedAt'] =
+        payload['clientAt'] ?? DateTime.now().toUtc().toIso8601String();
+    await _saveCache(key, stops);
+    return true;
+  }
+
+  int _asInt(dynamic value, int fallback) =>
+      value is num ? value.toInt() : int.tryParse('$value') ?? fallback;
 
   Future<CarrierProfile?> getCarrierProfile(String userId) async {
     final cacheKey = 'logistics:$userId:profile';

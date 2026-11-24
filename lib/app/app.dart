@@ -49,6 +49,9 @@ class _TracopAppState extends ConsumerState<TracopApp> {
       await ref.read(logisticsRepositoryProvider).syncPending(session!.user.id);
       await ref.read(syncServiceProvider).pushPending(userId: session.user.id);
       await ref.read(syncServiceProvider).pullAll(userId: session.user.id);
+      await ref
+          .read(logisticsRepositoryProvider)
+          .applyRemoteChanges(session.user.id);
       ref.read(syncRevisionProvider.notifier).state++;
     } catch (_) {
       // Cached data remains available; the next connectivity event retries.
