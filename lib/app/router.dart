@@ -21,6 +21,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/logistics/presentation/logistics_screen.dart';
 import '../features/logistics/presentation/logistics_provider.dart'
     show logisticsUserProvider;
+import '../features/sync_status/presentation/sync_status_screen.dart';
 
 final router = GoRouter(
   initialLocation: '/splash',
@@ -59,6 +60,14 @@ final router = GoRouter(
             context,
             state,
             const CarrierRoleGate(child: LogisticsScreen()),
+          ),
+        ),
+        GoRoute(
+          path: '/sincronizacion',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const SyncStatusScreen(),
           ),
         ),
         GoRoute(

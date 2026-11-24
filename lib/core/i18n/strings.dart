@@ -19,6 +19,21 @@ abstract final class SyncStrings {
   static const connectionDialogHint =
       'Puedes seguir consultando la información guardada en este dispositivo.';
   static const connectionDialogAction = 'Entendido';
+  static const syncCenter = 'Estado de sincronización';
+  static const syncNow = 'Sincronizar ahora';
+  static const syncingNow = 'Sincronizando…';
+  static const operationsTitle = 'Operaciones guardadas';
+  static const operationsLoadError = 'No pudimos cargar las operaciones.';
+  static const noActiveSession = 'No hay una sesión activa.';
+  static const retryOperation = 'Reintentar';
+  static const discardOperation = 'Descartar';
+  static const pendingStatus = 'Pendiente';
+  static const conflictStatus = 'Conflicto';
+  static const rejectedStatus = 'Rechazada';
+  static const appliedStatus = 'Aplicada';
+  static const noPendingOperations = 'No hay operaciones pendientes.';
+  static String pendingSummary(int count) => 'Pendientes: $count';
+  static String failedSummary(int count) => 'Requieren revisión: $count';
   static const updating = 'Actualizando';
   static const failed = 'No se pudo actualizar';
   static const upToDate = 'Al día';

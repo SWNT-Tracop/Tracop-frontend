@@ -135,6 +135,42 @@ class SyncService {
     return value is List ? value.length : 0;
   }
 
+  Future<List<SyncOperationInfo>> operations(String userId) async {
+    final rows = await (_database.select(_database.outboxOperations)
+          ..where((row) => row.ownerUserId.equals(userId))
+          ..orderBy([(row) => OrderingTerm.desc(row.clientTs)]))
+        .get();
+    return rows
+        .map((row) => SyncOperationInfo(
+              opId: row.opId,
+              entity: row.entity,
+              entityId: row.entityId,
+              type: row.type,
+              status: row.status,
+              attempts: row.attempts,
+              lastError: row.lastError,
+              createdAt: row.clientTs,
+            ))
+        .toList(growable: false);
+  }
+
+  Future<void> retryOperation(String opId) async {
+    await (_database.update(_database.outboxOperations)
+          ..where((row) => row.opId.equals(opId)))
+        .write(OutboxOperationsCompanion(
+      status: const Value('pending'),
+      attempts: const Value(0),
+      nextAttemptAt: Value(DateTime.now().toUtc()),
+      lastError: const Value(null),
+    ));
+  }
+
+  Future<void> discardOperation(String opId) async {
+    await (_database.delete(_database.outboxOperations)
+          ..where((row) => row.opId.equals(opId)))
+        .go();
+  }
+
   Future<void> _applyChange(String userId, Map<String, dynamic> change) async {
     final entity = change['entity'] as String?;
     final entityId = change['entityId'] as String?;
@@ -301,4 +337,26 @@ class SyncResult {
         hasMore: hasMore,
         nextCursor: nextCursor,
       );
+}
+
+class SyncOperationInfo {
+  const SyncOperationInfo({
+    required this.opId,
+    required this.entity,
+    required this.entityId,
+    required this.type,
+    required this.status,
+    required this.attempts,
+    required this.lastError,
+    required this.createdAt,
+  });
+
+  final String opId;
+  final String entity;
+  final String entityId;
+  final String type;
+  final String status;
+  final int attempts;
+  final String? lastError;
+  final DateTime createdAt;
 }
