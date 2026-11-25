@@ -30,6 +30,9 @@ import 'core/sync/sync_service.dart';
 import 'features/notifications/data/notifications_remote.dart';
 import 'features/notifications/data/notifications_repository.dart';
 import 'features/notifications/presentation/notifications_provider.dart';
+import 'features/trust/data/trust_remote.dart';
+import 'features/trust/data/trust_repository.dart';
+import 'features/trust/presentation/trust_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -95,6 +98,9 @@ Future<void> main() async {
             remote: NotificationsRemoteDataSource(dioClient),
             database: db,
           ),
+        ),
+        trustRepositoryProvider.overrideWithValue(
+          TrustRepository(remote: TrustRemoteDataSource(dioClient)),
         ),
       ],
       child: const TracopApp(),

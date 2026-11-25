@@ -22,6 +22,7 @@ import '../domain/entities/product.dart';
 import '../domain/entities/product_proposal.dart';
 import '../domain/lot_form_rules.dart';
 import '../domain/lot_quantity.dart';
+import '../domain/repository/catalog_repository.dart';
 import 'lot_detail_screen.dart' show lotDetailProvider;
 import 'lot_error_text.dart';
 import 'providers/catalog_provider.dart';
@@ -62,6 +63,7 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
   String? _photoError;
   List<LotPhoto> _photos = [];
   final List<_PendingLotPhoto> _pendingPhotos = [];
+  List<PendingPhotoStatus> _queuedPhotoStatuses = [];
   final _imagePicker = ImagePicker();
   Map<String, String> _fieldErrors = {};
   String? _baseline;
@@ -164,6 +166,15 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
     _photos = lot.photos;
     _usingProfilePoint = false;
     _baseline = _signature;
+    _loadQueuedPhotoStatuses(lot.id);
+  }
+
+  Future<void> _loadQueuedPhotoStatuses(String lotId) async {
+    final repository = ref.read(catalogRepositoryProvider);
+    if (repository is! PendingPhotoStatusReader) return;
+    final statuses = await (repository as PendingPhotoStatusReader)
+        .pendingLotPhotoStatuses(lotId);
+    if (mounted) setState(() => _queuedPhotoStatuses = statuses);
   }
 
   Future<void> _pickDate({required bool from}) async {
@@ -386,6 +397,7 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
           publishFailure = error;
       }
     }
+    await _loadQueuedPhotoStatuses(saved.id);
 
     if (!mounted) return;
     setState(() => _photoError = null);
@@ -633,7 +645,8 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
   }
 
   Widget _photosSection({required bool offline}) {
-    final count = _photos.length + _pendingPhotos.length;
+    final count =
+        _photos.length + _pendingPhotos.length + _queuedPhotoStatuses.length;
     final canAdd = !_submitting && !_photoBusy && count < 5;
     return _SectionCard(
       title: 'Fotos del lote',
@@ -671,6 +684,11 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
               ],
             ),
             const SizedBox(height: 12),
+          ],
+          if (_queuedPhotoStatuses.isNotEmpty) ...[
+            for (final status in _queuedPhotoStatuses)
+              _QueuedPhotoStatusTile(status: status),
+            const SizedBox(height: 8),
           ],
           OutlinedButton.icon(
             onPressed: canAdd ? _choosePhotoSource : null,
@@ -718,7 +736,7 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
           fit: BoxFit.cover,
           errorBuilder: (_, __, ___) => const _PhotoPlaceholder(),
         ),
-        label: index == 0 ? 'Portada' : 'Foto ${index + 1}',
+        label: index == 0 ? 'Lista · Portada' : 'Lista · Foto ${index + 1}',
         onRemove: offline || _photoBusy || _submitting
             ? null
             : () => _removeSavedPhoto(photo),
@@ -1301,6 +1319,39 @@ class _SectionCard extends StatelessWidget {
           ],
         ),
       );
+}
+
+class _QueuedPhotoStatusTile extends StatelessWidget {
+  const _QueuedPhotoStatusTile({required this.status});
+
+  final PendingPhotoStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final waiting = status.nextAttemptAt.isAfter(DateTime.now().toUtc());
+    final hasError =
+        status.state == 'error' || status.lastError?.isNotEmpty == true;
+    final label = hasError
+        ? 'Error reintentable'
+        : status.state == 'processing'
+            ? 'Procesando'
+            : waiting
+                ? 'Pendiente de carga'
+                : 'Pendiente de carga';
+    final icon = hasError
+        ? Icons.refresh_outlined
+        : waiting
+            ? Icons.cloud_upload_outlined
+            : Icons.sync_outlined;
+    return ListTile(
+      dense: true,
+      leading: Icon(icon, color: hasError ? AppTheme.earth : AppTheme.forest),
+      title: Text(label),
+      subtitle: Text(hasError
+          ? 'Se reintentará automáticamente.'
+          : 'La foto se conservará hasta completar la carga.'),
+    );
+  }
 }
 
 class _PendingLotPhoto {

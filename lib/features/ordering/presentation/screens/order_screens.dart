@@ -16,8 +16,11 @@ import '../../../../features/catalog/presentation/providers/lot_management_provi
 import '../../../../features/home/presentation/home_screen.dart';
 import '../../../../shared/widgets/option_selectors.dart';
 import '../../domain/entities/order.dart';
+import '../../../trust/domain/rating.dart';
+import '../../../trust/presentation/trust_provider.dart';
 import '../providers/order_provider.dart';
 import '../widgets/order_widgets.dart';
+import '../../../../shared/widgets/provider_trust.dart';
 
 const _titleStyle = TextStyle(
   color: Color(0xFF115E26),
@@ -606,6 +609,80 @@ class OrderDetailScreen extends ConsumerStatefulWidget {
 class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
   bool _busy = false;
 
+  Future<void> _rateProvider(OrderResponse order) async {
+    final comment = TextEditingController();
+    var score = 5;
+    final selected = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Valorar proveedor'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('¿Cómo fue tu experiencia con este proveedor?'),
+              const SizedBox(height: 12),
+              Center(
+                child: Wrap(
+                  children: [
+                    for (var value = 1; value <= 5; value++)
+                      IconButton(
+                        tooltip: '$value estrellas',
+                        onPressed: () => setDialogState(() => score = value),
+                        color: value <= score
+                            ? const Color(0xFFE09A17)
+                            : AppTheme.mutedText,
+                        icon: Icon(
+                            value <= score ? Icons.star : Icons.star_border),
+                      ),
+                  ],
+                ),
+              ),
+              TextField(
+                controller: comment,
+                maxLength: 500,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Comentario (opcional)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Ahora no')),
+            FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Enviar')),
+          ],
+        ),
+      ),
+    );
+    final text = comment.text;
+    comment.dispose();
+    if (selected != true || !mounted) return;
+    setState(() => _busy = true);
+    final result = await ref.read(trustRepositoryProvider).submitRating(
+          RatingSubmission(
+            id: const Uuid().v7(),
+            orderId: order.id,
+            score: score,
+            comment: text,
+          ),
+        );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    result.map(
+      ok: (_) => ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Valoración enviada.'))),
+      err: (failure) => ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_ratingErrorMessage(failure.error)))),
+    );
+  }
+
   Future<void> _reportPayment(OrderResponse order) async {
     setState(() => _busy = true);
     final result =
@@ -794,6 +871,21 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                   Text(
                       'Ventana: ${AppFormats.dayMonthTime(order.deliveryWindow!)}'),
               ],
+              if (isBuyer && order.provider != null) ...[
+                const SizedBox(height: 20),
+                Text('Proveedor',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                ProviderTrustSummary(
+                  verified: order.provider!['verified'] as bool? ?? false,
+                  rating: order.provider!['rating'] as String?,
+                  ratingsCount:
+                      (order.provider!['ratingsCount'] as num?)?.toInt() ?? 0,
+                ),
+              ],
               if (order.acceptedAt != null)
                 Padding(
                     padding: const EdgeInsets.only(top: 16),
@@ -830,6 +922,17 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                     onPressed: _busy ? null : () => _reportPayment(order),
                     icon: const Icon(Icons.payments_outlined),
                     label: const Text(LogisticsStrings.recordLocalPayment),
+                  ),
+                ),
+              ],
+              if (isBuyer && order.status == 'delivered') ...[
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 50,
+                  child: OutlinedButton.icon(
+                    onPressed: _busy ? null : () => _rateProvider(order),
+                    icon: const Icon(Icons.star_outline),
+                    label: const Text('Valorar proveedor'),
                   ),
                 ),
               ],
@@ -917,6 +1020,16 @@ String _errorMessage(Object error) {
         : 'No se pudo completar la acción.',
   };
 }
+
+String _ratingErrorMessage(DomainFailure failure) => switch (failure.code) {
+      'rating_conflict' => 'Este pedido ya tiene una valoración registrada.',
+      'not_found' => 'Este pedido todavía no permite valorar al proveedor.',
+      'rate_limited' => 'Has enviado muchas valoraciones. Intenta más tarde.',
+      'offline' ||
+      'network_error' =>
+        'Sin conexión. Intenta valorar cuando vuelvas a estar en línea.',
+      _ => 'No se pudo enviar la valoración. Intenta de nuevo.',
+    };
 
 String _cancelReasonLabel(String reason) => switch (reason) {
       'buyer_cancelled' => 'Cancelado por el comprador',

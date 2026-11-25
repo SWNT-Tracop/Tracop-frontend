@@ -16,7 +16,8 @@ import '../../domain/entities/lot.dart' hide Category, Product;
 import '../../domain/entities/product.dart';
 import '../../domain/repository/catalog_repository.dart';
 
-class CatalogRepositoryImpl implements CatalogRepository {
+class CatalogRepositoryImpl
+    implements CatalogRepository, PendingPhotoStatusReader {
   static const _lotTombstonePrefix = 'sync:lot-tombstone:';
   static const _pendingPhotoPrefix = 'sync:lot-photo:';
   final CatalogRemoteDataSource remote;
@@ -648,6 +649,28 @@ class CatalogRepositoryImpl implements CatalogRepository {
   }
 
   @override
+  Future<List<PendingPhotoStatus>> pendingLotPhotoStatuses(String lotId) async {
+    final rows = await (db.select(db.syncState)
+          ..where((row) => row.key.like('$_pendingPhotoPrefix%')))
+        .get();
+    final statuses = <PendingPhotoStatus>[];
+    for (final row in rows) {
+      final value = jsonDecode(row.value) as Map<String, dynamic>;
+      if (value['lotId'] != lotId) continue;
+      statuses.add(PendingPhotoStatus(
+        photoId: value['photoId'] as String,
+        state: value['state'] as String? ?? 'pending',
+        attempts: (value['attempts'] as num?)?.toInt() ?? 0,
+        nextAttemptAt:
+            DateTime.tryParse(value['nextAttemptAt'] as String? ?? '') ??
+                DateTime.now().toUtc(),
+        lastError: value['lastError'] as String?,
+      ));
+    }
+    return statuses;
+  }
+
+  @override
   Future<void> syncPendingLotPhotos() async {
     if (await _isOffline()) return;
     final now = DateTime.now().toUtc();
@@ -661,6 +684,10 @@ class CatalogRepositoryImpl implements CatalogRepository {
           value['nextAttemptAt'] as String? ?? '',
         );
         if (nextAttemptAt != null && nextAttemptAt.isAfter(now)) continue;
+        await _writeCache(
+          row.key,
+          jsonEncode({...value, 'state': 'processing'}),
+        );
         final result = await _uploadLotPhotoOnline(
           lotId: value['lotId'] as String,
           photoId: value['photoId'] as String,
@@ -691,6 +718,7 @@ class CatalogRepositoryImpl implements CatalogRepository {
       key,
       jsonEncode({
         ...value,
+        'state': 'error',
         'attempts': attempts + 1,
         'nextAttemptAt': DateTime.now()
             .toUtc()
@@ -715,6 +743,7 @@ class CatalogRepositoryImpl implements CatalogRepository {
         'filename': filename,
         'bytes': base64Encode(bytes),
         'attempts': 0,
+        'state': 'pending',
         'nextAttemptAt': DateTime.now().toUtc().toIso8601String(),
       }),
     );
