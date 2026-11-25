@@ -23,6 +23,7 @@ class SyncService {
 
   static const cursorKeyPrefix = 'sync:pull-cursor:';
   static const unappliedChangesKeyPrefix = 'sync:unapplied-changes:';
+  static const lotTombstoneKeyPrefix = 'sync:lot-tombstone:';
 
   Future<SyncResult> pull({required String userId, int limit = 200}) {
     return _exclusive(() => _pullPage(userId: userId, limit: limit));
@@ -110,7 +111,7 @@ class SyncService {
                 ..where((row) => row.opId.equals(opId)))
               .write(OutboxOperationsCompanion(
             status: Value(result['status'] as String? ?? 'rejected'),
-            lastError: Value(result['code'] as String? ?? 'sync_failed'),
+            lastError: Value(_syncFailureDescription(result)),
           ));
         }
       }
@@ -169,6 +170,29 @@ class SyncService {
       syncState: const Value('synced'),
       updatedAt: Value(DateTime.now().toUtc()),
     ));
+    await _updateCachedLotVersion(operation.entityId, serverVersion);
+  }
+
+  Future<void> _updateCachedLotVersion(String lotId, int version) async {
+    final rows = await (_database.select(_database.syncState)
+          ..where((row) => row.key.like('catalog_%')))
+        .get();
+    for (final row in rows) {
+      final decoded = jsonDecode(row.value);
+      var changed = false;
+      if (decoded is Map<String, dynamic> && decoded['id'] == lotId) {
+        decoded['version'] = version;
+        changed = true;
+      } else if (decoded is Map<String, dynamic> && decoded['items'] is List) {
+        for (final item in decoded['items']) {
+          if (item is Map && item['id'] == lotId) {
+            item['version'] = version;
+            changed = true;
+          }
+        }
+      }
+      if (changed) await _writeState(row.key, jsonEncode(decoded));
+    }
   }
 
   Future<String> currentCursor(String userId) => _readCursor(userId);
@@ -298,6 +322,7 @@ class SyncService {
   Future<void> _applyLot(
       String id, String operation, Map<String, dynamic> payload) async {
     if (_isDelete(operation, payload)) {
+      await _writeTombstone(id, _asInt(payload['version']));
       await (_database.delete(_database.lots)
             ..where((row) => row.id.equals(id)))
           .go();
@@ -307,6 +332,9 @@ class SyncService {
           ..where((row) => row.id.equals(id)))
         .getSingleOrNull();
     final version = _asInt(payload['version']);
+    final tombstone = await _readTombstone(id);
+    if (tombstone != null && tombstone >= version) return;
+    if (tombstone != null) await _clearTombstone(id);
     if (existing != null && version < existing.version) return;
 
     await _database.into(_database.lots).insertOnConflictUpdate(
@@ -352,7 +380,15 @@ class SyncService {
   }
 
   int _asInt(dynamic value) =>
-      value is num ? value.toInt() : int.parse('$value');
+      value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+
+  String _syncFailureDescription(Map<String, dynamic> result) {
+    final code = result['code'] as String? ?? 'sync_failed';
+    final serverVersion = result['serverVersion'];
+    return serverVersion is num
+        ? '$code · versión del servidor: ${serverVersion.toInt()}'
+        : code;
+  }
 
   DateTime _asDate(dynamic value) => DateTime.parse('$value').toUtc();
 
@@ -373,6 +409,20 @@ class SyncService {
     await _database.into(_database.syncState).insertOnConflictUpdate(
           SyncStateCompanion.insert(key: key, value: value),
         );
+  }
+
+  Future<int?> _readTombstone(String lotId) async {
+    final raw = await _readState('$lotTombstoneKeyPrefix$lotId');
+    return raw == null ? null : int.tryParse(raw);
+  }
+
+  Future<void> _writeTombstone(String lotId, int version) =>
+      _writeState('$lotTombstoneKeyPrefix$lotId', '$version');
+
+  Future<void> _clearTombstone(String lotId) async {
+    await (_database.delete(_database.syncState)
+          ..where((row) => row.key.equals('$lotTombstoneKeyPrefix$lotId')))
+        .go();
   }
 }
 

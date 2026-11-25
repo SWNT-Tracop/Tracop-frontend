@@ -27,6 +27,7 @@ abstract final class SyncStrings {
   static const noActiveSession = 'No hay una sesión activa.';
   static const retryOperation = 'Reintentar';
   static const discardOperation = 'Descartar';
+  static const acceptServerVersion = 'Usar versión del servidor';
   static const pendingStatus = 'Pendiente';
   static const conflictStatus = 'Conflicto';
   static const rejectedStatus = 'Rechazada';

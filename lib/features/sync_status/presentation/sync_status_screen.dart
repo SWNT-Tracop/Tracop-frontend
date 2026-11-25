@@ -50,6 +50,14 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     ref.invalidate(syncOperationsProvider(userId));
   }
 
+  Future<void> _acceptServer(String userId, String opId) async {
+    final service = ref.read(syncServiceProvider);
+    await service.discardOperation(opId);
+    await service.pullAll(userId: userId);
+    await ref.read(logisticsRepositoryProvider).applyRemoteChanges(userId);
+    ref.read(syncRevisionProvider.notifier).state++;
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(homeUserProvider).valueOrNull;
@@ -109,6 +117,9 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
                                     item.status == 'conflict'
                                 ? () => _discard(user.id, item.opId)
                                 : null,
+                            onAcceptServer: item.status == 'conflict'
+                                ? () => _acceptServer(user.id, item.opId)
+                                : null,
                           ),
                       ],
                     ),
@@ -163,11 +174,17 @@ class _SyncSummary extends StatelessWidget {
 }
 
 class _OperationTile extends StatelessWidget {
-  const _OperationTile({required this.operation, this.onRetry, this.onDiscard});
+  const _OperationTile({
+    required this.operation,
+    this.onRetry,
+    this.onDiscard,
+    this.onAcceptServer,
+  });
 
   final SyncOperationInfo operation;
   final VoidCallback? onRetry;
   final VoidCallback? onDiscard;
+  final VoidCallback? onAcceptServer;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -179,22 +196,27 @@ class _OperationTile extends StatelessWidget {
           subtitle: Text(
               '${_statusLabel(operation.status)}${operation.lastError == null ? '' : '\n${operation.lastError}'}'),
           isThreeLine: operation.lastError != null,
-          trailing: onRetry == null && onDiscard == null
-              ? null
-              : PopupMenuButton<String>(
-                  onSelected: (value) {
-                    if (value == 'retry') onRetry?.call();
-                    if (value == 'discard') onDiscard?.call();
-                  },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(
-                        value: 'retry',
-                        child: Text(SyncStrings.retryOperation)),
-                    PopupMenuItem(
-                        value: 'discard',
-                        child: Text(SyncStrings.discardOperation)),
-                  ],
-                ),
+          trailing:
+              onRetry == null && onDiscard == null && onAcceptServer == null
+                  ? null
+                  : PopupMenuButton<String>(
+                      onSelected: (value) {
+                        if (value == 'retry') onRetry?.call();
+                        if (value == 'discard') onDiscard?.call();
+                        if (value == 'server') onAcceptServer?.call();
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                            value: 'retry',
+                            child: Text(SyncStrings.retryOperation)),
+                        PopupMenuItem(
+                            value: 'discard',
+                            child: Text(SyncStrings.discardOperation)),
+                        PopupMenuItem(
+                            value: 'server',
+                            child: Text(SyncStrings.acceptServerVersion)),
+                      ],
+                    ),
         ),
       );
 
