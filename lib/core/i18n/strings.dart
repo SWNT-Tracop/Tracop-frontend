@@ -15,6 +15,8 @@ abstract final class SyncStrings {
   static const checking = 'Comprobando conexión';
   static const offline = 'Sin conexión';
   static const connectedToInternet = 'Conectado a internet';
+  static const synced = 'Sincronizado';
+  static const connectedWithPending = 'Conectado, con operaciones pendientes';
   static const noInternetConnection = 'No tienes conexión en este momento';
   static const connectionDialogHint =
       'Puedes seguir consultando la información guardada en este dispositivo.';
@@ -42,6 +44,25 @@ abstract final class SyncStrings {
   static const lostConnection =
       'Sin conexión. Seguirás viendo lo guardado en este dispositivo.';
   static const backOnline = 'Conexión recuperada.';
+  static const neverSynced = 'Sin una sincronización exitosa registrada.';
+  static const syncNoConnection =
+      'No hay conexión. Tus cambios siguen guardados en este dispositivo.';
+  static const syncServerUnavailable =
+      'El servicio no está disponible. Tus cambios siguen guardados aquí.';
+  static const syncRateLimited =
+      'Has realizado muchas solicitudes. Intenta más tarde.';
+  static const syncSessionExpired =
+      'Tu sesión venció. Inicia sesión nuevamente para sincronizar.';
+  static const syncConflict =
+      'El servidor tiene una versión diferente. Revisa la operación.';
+  static const syncForbidden =
+      'No tienes permisos para sincronizar este cambio.';
+  static const syncGenericFailure =
+      'No pudimos sincronizar todavía. Tus cambios siguen guardados aquí.';
+  static const lotsUpdateFailed = 'No pudimos actualizar tus lotes';
+  static String serverVersion(int version) => 'versión del servidor $version';
+  static String lastSynced(DateTime value) =>
+      'Última sincronización exitosa: ${value.toLocal()}';
 }
 
 abstract final class SessionStrings {
@@ -94,7 +115,7 @@ abstract final class LogisticsStrings {
   static const localTripCreated =
       'Viaje guardado en este dispositivo, sin sincronizar.';
   static const localTripNotice =
-      'Este viaje no está sincronizado con el servidor.';
+      'Viaje local: se guarda únicamente en este dispositivo.';
   static const startTrip = 'Iniciar viaje';
   static const checkinPickup = 'Confirmar recogida';
   static const checkinDelivery = 'Confirmar entrega';
@@ -296,6 +317,13 @@ abstract final class LotStrings {
 }
 
 abstract final class CatalogStrings {
+  static const productProposals = 'Propuestas de productos';
+  static const noProductProposals = 'Aún no tienes propuestas de productos.';
+  static const pendingReview = 'Pendiente';
+  static const approved = 'Aprobada';
+  static const rejected = 'Rechazada';
+  static const rejectionReason = 'Motivo';
+  static const resubmit = 'Proponer nuevamente';
   static const title = 'Buscar lotes';
   static const searchLabel = 'Buscar productos o ubicación';
   static const searchHint = 'Producto o ubicación';

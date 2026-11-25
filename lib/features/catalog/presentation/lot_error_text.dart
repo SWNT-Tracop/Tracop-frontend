@@ -20,10 +20,16 @@ String lotErrorText(DomainFailure failure) => switch (failure.code) {
         'El estado actual del lote no permite esa acción.',
       'version_conflict' =>
         'El lote cambió en otro dispositivo. Actualiza e intenta de nuevo.',
-      'not_found' => 'El lote ya no existe o no está disponible.',
+      'not_found' =>
+        'No encontramos tu perfil de proveedor o el producto seleccionado.',
       'forbidden' => 'No tienes permisos para realizar esta acción.',
       'rate_limited' => 'Demasiadas solicitudes. Intenta nuevamente más tarde.',
+      'unauthorized' ||
+      'invalid_session' =>
+        'Tu sesión ya no es válida. Inicia sesión nuevamente.',
+      'server_error' =>
+        'El servidor no pudo procesar el lote. Intenta nuevamente.',
       'network_error' =>
         'No hay conexión con el servicio. Intenta cuando tengas señal.',
-      _ => 'No pudimos completar la solicitud. Intenta de nuevo.',
+      _ => 'Error ${failure.statusCode} (${failure.code}): ${failure.message}',
     };

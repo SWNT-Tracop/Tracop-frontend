@@ -48,9 +48,10 @@ class DioClient {
           }
           if (response != null) {
             final data = response.data;
+            final statusCode = response.statusCode ?? 500;
             final code = data is Map && data.containsKey('code')
                 ? data['code'] as String?
-                : null;
+                : _defaultErrorCode(statusCode);
             final message = data is Map && data.containsKey('message')
                 ? data['message'] as String?
                 : 'Error interno.';
@@ -59,7 +60,7 @@ class DioClient {
                 requestOptions: error.requestOptions,
                 response: response,
                 error: DomainFailure(
-                  statusCode: response.statusCode ?? 500,
+                  statusCode: statusCode,
                   code: code ?? 'unknown',
                   message: message ?? 'Error interno.',
                 ),
@@ -71,6 +72,17 @@ class DioClient {
       ),
     );
   }
+
+  String _defaultErrorCode(int statusCode) => switch (statusCode) {
+        400 => 'bad_request',
+        401 => 'unauthorized',
+        403 => 'forbidden',
+        404 => 'not_found',
+        409 => 'conflict',
+        429 => 'rate_limited',
+        _ when statusCode >= 500 => 'server_error',
+        _ => 'http_error',
+      };
 
   Dio get instance => _dio;
 

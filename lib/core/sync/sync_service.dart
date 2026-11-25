@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:drift/drift.dart';
 
+import '../i18n/strings.dart';
 import '../network/dio_client.dart';
+import '../network/network_status.dart';
 import '../storage/app_database.dart' hide Category, Product, Lot;
+import 'sync_error_text.dart';
 
 /// Pulls server changes and applies them to the local database.
 ///
@@ -24,6 +26,7 @@ class SyncService {
   static const cursorKeyPrefix = 'sync:pull-cursor:';
   static const unappliedChangesKeyPrefix = 'sync:unapplied-changes:';
   static const lotTombstoneKeyPrefix = 'sync:lot-tombstone:';
+  static const lastSuccessfulSyncKeyPrefix = 'sync:last-success:';
 
   Future<SyncResult> pull({required String userId, int limit = 200}) {
     return _exclusive(() => _pullPage(userId: userId, limit: limit));
@@ -31,8 +34,7 @@ class SyncService {
 
   Future<SyncResult> _pullPage(
       {required String userId, int limit = 200}) async {
-    final connection = await Connectivity().checkConnectivity();
-    if (!connection.any((item) => item != ConnectivityResult.none)) {
+    if (!await hasServerConnection(_client.baseUrl)) {
       return const SyncResult(online: false);
     }
 
@@ -62,13 +64,14 @@ class SyncService {
     );
   }
 
-  Future<void> pushPending({required String userId}) {
+  Future<PushResult> pushPending({required String userId}) {
     return _exclusive(() => _pushPending(userId: userId));
   }
 
-  Future<void> _pushPending({required String userId}) async {
-    final connection = await Connectivity().checkConnectivity();
-    if (!connection.any((item) => item != ConnectivityResult.none)) return;
+  Future<PushResult> _pushPending({required String userId}) async {
+    if (!await hasServerConnection(_client.baseUrl)) {
+      return const PushResult(online: false);
+    }
     final pending = await (_database.select(_database.outboxOperations)
           ..where((row) =>
               row.ownerUserId.equals(userId) &
@@ -77,7 +80,9 @@ class SyncService {
           ..orderBy([(row) => OrderingTerm.asc(row.clientTs)])
           ..limit(50))
         .get();
-    if (pending.isEmpty) return;
+    if (pending.isEmpty) return const PushResult(online: true);
+    var applied = 0;
+    var failed = 0;
     try {
       final response = await _client.instance.post('/sync/push', data: {
         'operations': pending
@@ -97,6 +102,7 @@ class SyncService {
       for (final result in results) {
         final opId = result['opId'] as String;
         if (result['status'] == 'applied') {
+          applied++;
           final serverVersion = result['serverVersion'];
           if (serverVersion is num) {
             await _applyServerVersion(
@@ -107,6 +113,7 @@ class SyncService {
                 ..where((row) => row.opId.equals(opId)))
               .go();
         } else {
+          failed++;
           await (_database.update(_database.outboxOperations)
                 ..where((row) => row.opId.equals(opId)))
               .write(OutboxOperationsCompanion(
@@ -115,6 +122,7 @@ class SyncService {
           ));
         }
       }
+      return PushResult(online: true, applied: applied, failed: failed);
     } catch (error) {
       for (final operation in pending) {
         await (_database.update(_database.outboxOperations)
@@ -123,9 +131,10 @@ class SyncService {
           attempts: Value(operation.attempts + 1),
           nextAttemptAt:
               Value(DateTime.now().toUtc().add(const Duration(minutes: 1))),
-          lastError: Value(error.toString()),
+          lastError: Value(syncErrorFromException(error)),
         ));
       }
+      return const PushResult(online: false);
     }
   }
 
@@ -196,6 +205,16 @@ class SyncService {
   }
 
   Future<String> currentCursor(String userId) => _readCursor(userId);
+
+  Future<DateTime?> lastSuccessfulSync(String userId) async {
+    final raw = await _readState('$lastSuccessfulSyncKeyPrefix$userId');
+    return raw == null ? null : DateTime.tryParse(raw)?.toUtc();
+  }
+
+  Future<void> recordSuccessfulSync(String userId) => _writeState(
+        '$lastSuccessfulSyncKeyPrefix$userId',
+        DateTime.now().toUtc().toIso8601String(),
+      );
 
   Future<int> unappliedChangeCount(String userId) async {
     final raw = await _readState('$unappliedChangesKeyPrefix$userId');
@@ -385,9 +404,10 @@ class SyncService {
   String _syncFailureDescription(Map<String, dynamic> result) {
     final code = result['code'] as String? ?? 'sync_failed';
     final serverVersion = result['serverVersion'];
+    final message = syncErrorText(code);
     return serverVersion is num
-        ? '$code · versión del servidor: ${serverVersion.toInt()}'
-        : code;
+        ? '$message (${SyncStrings.serverVersion(serverVersion.toInt())})'
+        : message;
   }
 
   DateTime _asDate(dynamic value) => DateTime.parse('$value').toUtc();
@@ -445,6 +465,18 @@ class SyncResult {
         hasMore: hasMore,
         nextCursor: nextCursor,
       );
+}
+
+class PushResult {
+  const PushResult({
+    required this.online,
+    this.applied = 0,
+    this.failed = 0,
+  });
+
+  final bool online;
+  final int applied;
+  final int failed;
 }
 
 class SyncOperationInfo {

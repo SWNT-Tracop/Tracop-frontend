@@ -9,6 +9,8 @@ import '../core/sync/sync_provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../features/logistics/presentation/logistics_provider.dart';
 import '../features/catalog/presentation/providers/catalog_provider.dart';
+import '../features/home/presentation/home_screen.dart'
+    show homeConnectivityProvider;
 import './messenger.dart';
 import './router.dart';
 import './theme.dart';
@@ -27,6 +29,7 @@ class _TracopAppState extends ConsumerState<TracopApp> {
     super.initState();
     authInvalidationSignal.addListener(_onSessionExpired);
     _connectivity = Connectivity().onConnectivityChanged.listen((results) {
+      ref.invalidate(homeConnectivityProvider);
       if (results.any((result) => result != ConnectivityResult.none)) {
         _sync();
       }
@@ -48,10 +51,15 @@ class _TracopAppState extends ConsumerState<TracopApp> {
     if (session?.accessToken.isEmpty != false) return;
     final userId = session!.user.id;
     try {
-      await ref.read(syncServiceProvider).pushPending(userId: userId);
+      final pushResult =
+          await ref.read(syncServiceProvider).pushPending(userId: userId);
       await ref.read(catalogRepositoryProvider).syncPendingLotPhotos();
-      await ref.read(syncServiceProvider).pullAll(userId: userId);
+      final pullResult =
+          await ref.read(syncServiceProvider).pullAll(userId: userId);
       await ref.read(logisticsRepositoryProvider).applyRemoteChanges(userId);
+      if (pushResult.online && pullResult.online) {
+        await ref.read(syncServiceProvider).recordSuccessfulSync(userId);
+      }
       ref.read(syncRevisionProvider.notifier).state++;
     } catch (_) {
       // Cached data remains available; the next connectivity event retries.

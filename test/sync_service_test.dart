@@ -53,6 +53,19 @@ void main() {
     expect(await service.lotOperationStatuses('user-1'), {'lot-1': 'conflict'});
   });
 
+  test(
+      'persists the last completed synchronization separately from connectivity',
+      () async {
+    expect(await service.lastSuccessfulSync('user-1'), null);
+
+    await service.recordSuccessfulSync('user-1');
+    final timestamp = await service.lastSuccessfulSync('user-1');
+
+    expect(timestamp, isNot(null));
+    expect(timestamp!.isBefore(DateTime.now().toUtc()), isTrue);
+    expect(await service.lastSuccessfulSync('user-2'), null);
+  });
+
   test('retries and discards an operation without touching other users',
       () async {
     final now = DateTime.now().toUtc();
