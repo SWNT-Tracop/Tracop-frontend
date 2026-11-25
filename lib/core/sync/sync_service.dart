@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -18,11 +19,17 @@ class SyncService {
 
   final DioClient _client;
   final AppDatabase _database;
+  Future<void> _syncQueue = Future<void>.value();
 
   static const cursorKeyPrefix = 'sync:pull-cursor:';
   static const unappliedChangesKeyPrefix = 'sync:unapplied-changes:';
 
-  Future<SyncResult> pull({required String userId, int limit = 200}) async {
+  Future<SyncResult> pull({required String userId, int limit = 200}) {
+    return _exclusive(() => _pullPage(userId: userId, limit: limit));
+  }
+
+  Future<SyncResult> _pullPage(
+      {required String userId, int limit = 200}) async {
     final connection = await Connectivity().checkConnectivity();
     if (!connection.any((item) => item != ConnectivityResult.none)) {
       return const SyncResult(online: false);
@@ -54,7 +61,11 @@ class SyncService {
     );
   }
 
-  Future<void> pushPending({required String userId}) async {
+  Future<void> pushPending({required String userId}) {
+    return _exclusive(() => _pushPending(userId: userId));
+  }
+
+  Future<void> _pushPending({required String userId}) async {
     final connection = await Connectivity().checkConnectivity();
     if (!connection.any((item) => item != ConnectivityResult.none)) return;
     final pending = await (_database.select(_database.outboxOperations)
@@ -85,6 +96,12 @@ class SyncService {
       for (final result in results) {
         final opId = result['opId'] as String;
         if (result['status'] == 'applied') {
+          final serverVersion = result['serverVersion'];
+          if (serverVersion is num) {
+            await _applyServerVersion(
+                pending.firstWhere((operation) => operation.opId == opId),
+                serverVersion.toInt());
+          }
           await (_database.delete(_database.outboxOperations)
                 ..where((row) => row.opId.equals(opId)))
               .go();
@@ -113,17 +130,45 @@ class SyncService {
 
   Future<SyncResult> pullAll(
       {required String userId, int pageSize = 200}) async {
+    return _exclusive(() => _pullAll(userId: userId, pageSize: pageSize));
+  }
+
+  Future<SyncResult> _pullAll(
+      {required String userId, int pageSize = 200}) async {
     var total = 0;
     var hasMore = true;
     SyncResult? last;
     while (hasMore) {
-      last = await pull(userId: userId, limit: pageSize);
+      last = await _pullPage(userId: userId, limit: pageSize);
       total += last.applied;
       if (!last.online || !last.hasMore) {
         hasMore = false;
       }
     }
     return (last ?? const SyncResult(online: true)).copyWith(applied: total);
+  }
+
+  Future<T> _exclusive<T>(Future<T> Function() action) async {
+    final previous = _syncQueue;
+    final release = Completer<void>();
+    _syncQueue = previous.then((_) => release.future);
+    await previous;
+    try {
+      return await action();
+    } finally {
+      release.complete();
+    }
+  }
+
+  Future<void> _applyServerVersion(dynamic operation, int serverVersion) async {
+    if (operation.entity != 'lot') return;
+    await (_database.update(_database.lots)
+          ..where((row) => row.id.equals(operation.entityId)))
+        .write(LotsCompanion(
+      version: Value(serverVersion),
+      syncState: const Value('synced'),
+      updatedAt: Value(DateTime.now().toUtc()),
+    ));
   }
 
   Future<String> currentCursor(String userId) => _readCursor(userId);
