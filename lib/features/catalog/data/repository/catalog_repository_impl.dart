@@ -360,10 +360,26 @@ class CatalogRepositoryImpl implements CatalogRepository {
   Future<Result<List<Lot>, DomainFailure>> getMyLots() async {
     try {
       final json = await remote.getMyLots();
-      final items = [
+      final remoteItems = [
         for (final e in json)
           if (!await _isLotTombstoned(e['id'] as String))
             Lot.fromJson(e..['isMine'] = true),
+      ];
+      final cached = await _readMyLotsCache() ?? const <Lot>[];
+      final pendingIds = await _pendingLotIds();
+      final remoteIds = remoteItems.map((lot) => lot.id).toSet();
+      final remoteById = <String, Lot>{
+        for (final lot in remoteItems) lot.id: lot,
+      };
+      for (final lot in cached) {
+        if (pendingIds.contains(lot.id)) remoteById[lot.id] = lot;
+      }
+      final localOnly = cached.where(
+        (lot) => pendingIds.contains(lot.id) && !remoteIds.contains(lot.id),
+      );
+      final items = [
+        ...localOnly,
+        for (final lot in remoteItems) remoteById[lot.id]!,
       ];
       final cachedAt = DateTime.now().toUtc();
       await _writeMyLotsCache(items, cachedAt);
@@ -916,6 +932,20 @@ class CatalogRepositoryImpl implements CatalogRepository {
       ...current.where((item) => item.id != lot.id),
     ];
     await _writeMyLotsCache(updated, cachedAt);
+  }
+
+  Future<Set<String>> _pendingLotIds() async {
+    final ownerId = await _ownerId();
+    if (ownerId == null) return <String>{};
+    final rows = await (db.select(db.outboxOperations)
+          ..where((row) =>
+              row.ownerUserId.equals(ownerId) &
+              row.entity.equals('lot') &
+              (row.status.equals('pending') |
+                  row.status.equals('rejected') |
+                  row.status.equals('conflict'))))
+        .get();
+    return rows.map((row) => row.entityId).toSet();
   }
 
   Future<void> _forgetLot(String id, {int? version}) async {
