@@ -1,10 +1,12 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
+import 'package:dio/dio.dart';
 import '../../../../core/result/result.dart';
+import '../../../../core/config/env.dart';
+import '../../../../core/network/network_status.dart';
 import '../../../../core/storage/app_database.dart' hide Category, Product, Lot;
 import '../remote/catalog_remote.dart';
 import '../../domain/entities/category.dart';
@@ -371,8 +373,7 @@ class CatalogRepositoryImpl implements CatalogRepository {
     } catch (e) {
       final cached = await _readMyLotsCache();
       if (cached != null) return Ok(cached);
-      return Err(DomainFailure(
-          statusCode: 500, code: 'unknown', message: e.toString()));
+      return Err(_failureFromException(e));
     }
   }
 
@@ -398,10 +399,13 @@ class CatalogRepositoryImpl implements CatalogRepository {
       await _rememberLot(lot);
       return Ok(lot);
     } on DomainFailure catch (e) {
+      if (_shouldQueueFailure(e)) return _queueCreateLot(request);
       return Err(e);
     } catch (e) {
-      return Err(DomainFailure(
-          statusCode: 500, code: 'unknown', message: e.toString()));
+      if (_isTransportFailure(e)) return _queueCreateLot(request);
+      final failure = _failureFromException(e);
+      if (_shouldQueueFailure(failure)) return _queueCreateLot(request);
+      return Err(failure);
     }
   }
 
@@ -435,10 +439,15 @@ class CatalogRepositoryImpl implements CatalogRepository {
       await _rememberLot(lot);
       return Ok(lot);
     } on DomainFailure catch (e) {
+      if (_shouldQueueFailure(e)) return _queueUpdateLot(id, request);
       return Err(e);
     } catch (e) {
-      return Err(DomainFailure(
-          statusCode: 500, code: 'unknown', message: e.toString()));
+      if (_isTransportFailure(e)) return _queueUpdateLot(id, request);
+      final failure = _failureFromException(e);
+      if (_shouldQueueFailure(failure)) {
+        return _queueUpdateLot(id, request);
+      }
+      return Err(failure);
     }
   }
 
@@ -452,10 +461,19 @@ class CatalogRepositoryImpl implements CatalogRepository {
       await _rememberLot(lot);
       return Ok(lot);
     } on DomainFailure catch (e) {
+      if (_shouldQueueFailure(e)) {
+        return _queueTransition(id, version, 'published');
+      }
       return Err(e);
     } catch (e) {
-      return Err(DomainFailure(
-          statusCode: 500, code: 'unknown', message: e.toString()));
+      if (_isTransportFailure(e)) {
+        return _queueTransition(id, version, 'published');
+      }
+      final failure = _failureFromException(e);
+      if (_shouldQueueFailure(failure)) {
+        return _queueTransition(id, version, 'published');
+      }
+      return Err(failure);
     }
   }
 
@@ -469,10 +487,19 @@ class CatalogRepositoryImpl implements CatalogRepository {
       await _rememberLot(lot);
       return Ok(lot);
     } on DomainFailure catch (e) {
+      if (_shouldQueueFailure(e)) {
+        return _queueTransition(id, version, 'cancelled');
+      }
       return Err(e);
     } catch (e) {
-      return Err(DomainFailure(
-          statusCode: 500, code: 'unknown', message: e.toString()));
+      if (_isTransportFailure(e)) {
+        return _queueTransition(id, version, 'cancelled');
+      }
+      final failure = _failureFromException(e);
+      if (_shouldQueueFailure(failure)) {
+        return _queueTransition(id, version, 'cancelled');
+      }
+      return Err(failure);
     }
   }
 
@@ -499,8 +526,20 @@ class CatalogRepositoryImpl implements CatalogRepository {
     } on DomainFailure catch (e) {
       return Err(e);
     } catch (e) {
-      return Err(DomainFailure(
-          statusCode: 500, code: 'unknown', message: e.toString()));
+      if (_isTransportFailure(e)) {
+        final userId = await _ownerId();
+        if (userId == null) return _offlineOwnerError<void>();
+        await _enqueueLot(
+          ownerUserId: userId,
+          entityId: id,
+          type: 'delete',
+          baseVersion: version,
+          payload: const {},
+        );
+        await _forgetLot(id, version: version);
+        return const Ok(null);
+      }
+      return Err(_failureFromException(e));
     }
   }
 
@@ -520,12 +559,24 @@ class CatalogRepositoryImpl implements CatalogRepository {
       );
       return const Ok(<LotPhoto>[]);
     }
-    return _uploadLotPhotoOnline(
+    final result = await _uploadLotPhotoOnline(
       lotId: lotId,
       photoId: photoId,
       filename: filename,
       bytes: bytes,
     );
+    if (result case Err(:final error)) {
+      if (_shouldQueuePhotoFailure(error)) {
+        await _queueLotPhoto(
+          lotId: lotId,
+          photoId: photoId,
+          filename: filename,
+          bytes: bytes,
+        );
+        return const Ok(<LotPhoto>[]);
+      }
+    }
+    return result;
   }
 
   Future<Result<List<LotPhoto>, DomainFailure>> _uploadLotPhotoOnline({
@@ -621,6 +672,13 @@ class CatalogRepositoryImpl implements CatalogRepository {
     );
   }
 
+  bool _shouldQueuePhotoFailure(DomainFailure failure) =>
+      failure.statusCode >= 500 ||
+      failure.code == 'photo_upload_failed' ||
+      failure.code == 'photo_processing' ||
+      failure.code == 'photo_policy_missing' ||
+      failure.code == 'storage_unavailable';
+
   @override
   Future<Result<List<LotPhoto>, DomainFailure>> deleteLotPhoto(
       String lotId, String photoId) async {
@@ -670,8 +728,7 @@ class CatalogRepositoryImpl implements CatalogRepository {
   }
 
   Future<bool> _isOffline() async {
-    final connectivity = await Connectivity().checkConnectivity();
-    return !connectivity.any((item) => item != ConnectivityResult.none);
+    return !await hasServerConnection(AppConfig.apiBaseUrl);
   }
 
   Future<String?> _ownerId() async {
@@ -736,6 +793,69 @@ class CatalogRepositoryImpl implements CatalogRepository {
     return Ok(lot);
   }
 
+  Future<Result<Lot, DomainFailure>> _queueCreateLot(
+      CreateLotRequest request) async {
+    final userId = await _ownerId();
+    if (userId == null) return _offlineOwnerError();
+    final lot = _optimisticLot(request.toJson(),
+        providerId: userId, status: 'draft', version: 1);
+    await _enqueueLot(
+      ownerUserId: userId,
+      entityId: request.id,
+      type: 'create',
+      payload: request.toJson(),
+    );
+    await _rememberLot(lot);
+    return Ok(lot);
+  }
+
+  Future<Result<Lot, DomainFailure>> _queueUpdateLot(
+      String id, UpdateLotRequest request) async {
+    final userId = await _ownerId();
+    final current = await _readLotCache(id);
+    if (userId == null || current == null) return _offlineOwnerError();
+    final patch = Map<String, dynamic>.from(request.toJson())
+      ..remove('version');
+    final merged = current.toJson()..addAll(patch);
+    final lot = _optimisticLot(merged,
+        providerId: current.providerId ?? userId,
+        status: current.status,
+        version: request.version + 1);
+    await _enqueueLot(
+      ownerUserId: userId,
+      entityId: id,
+      type: 'update',
+      baseVersion: request.version,
+      payload: patch,
+    );
+    await _rememberLot(lot);
+    return Ok(lot);
+  }
+
+  bool _isTransportFailure(Object error) =>
+      error is DioException && error.response == null;
+
+  bool _shouldQueueFailure(DomainFailure failure) =>
+      failure.statusCode >= 500 || failure.code == 'server_error';
+
+  DomainFailure _failureFromException(Object error) {
+    if (error is DioException && error.error is DomainFailure) {
+      return error.error as DomainFailure;
+    }
+    if (error is DioException) {
+      return const DomainFailure(
+        statusCode: 0,
+        code: 'network_error',
+        message: 'No se pudo conectar con el servidor.',
+      );
+    }
+    return DomainFailure(
+      statusCode: 500,
+      code: 'unknown',
+      message: error.toString(),
+    );
+  }
+
   Lot _optimisticLot(
     Map<String, dynamic> json, {
     required String providerId,
@@ -750,6 +870,7 @@ class CatalogRepositoryImpl implements CatalogRepository {
       'status': status,
       'version': version,
       'isMine': true,
+      '_fromCache': true,
       'photos': json['photos'] ?? const [],
     });
   }
@@ -757,8 +878,7 @@ class CatalogRepositoryImpl implements CatalogRepository {
   Future<void> _rememberLot(Lot lot) async {
     final cachedAt = DateTime.now().toUtc();
     await _writeCache('catalog_lot_${lot.id}', _lotCachePayload(lot, cachedAt));
-    final current = await _readMyLotsCache();
-    if (current == null) return;
+    final current = await _readMyLotsCache() ?? const <Lot>[];
     final updated = [
       lot,
       ...current.where((item) => item.id != lot.id),

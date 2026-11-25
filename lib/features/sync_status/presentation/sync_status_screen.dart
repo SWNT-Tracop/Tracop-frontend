@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../app/theme.dart';
 import '../../../core/i18n/strings.dart';
 import '../../../core/sync/sync_provider.dart';
+import '../../../core/sync/sync_error_text.dart';
 import '../../../core/sync/sync_service.dart';
 import '../../home/presentation/home_screen.dart'
     show homeConnectivityProvider, homeUserProvider;
@@ -32,11 +33,21 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     setState(() => _syncing = true);
     try {
       final service = ref.read(syncServiceProvider);
-      await service.pushPending(userId: userId);
+      final pushResult = await service.pushPending(userId: userId);
       await ref.read(catalogRepositoryProvider).syncPendingLotPhotos();
-      await service.pullAll(userId: userId);
+      final pullResult = await service.pullAll(userId: userId);
       await ref.read(logisticsRepositoryProvider).applyRemoteChanges(userId);
+      if (pushResult.online && pullResult.online) {
+        await service.recordSuccessfulSync(userId);
+      }
       ref.read(syncRevisionProvider.notifier).state++;
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+              SnackBar(content: Text(syncErrorFromException(error))));
+      }
     } finally {
       if (mounted) setState(() => _syncing = false);
     }
@@ -53,11 +64,20 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   }
 
   Future<void> _acceptServer(String userId, String opId) async {
-    final service = ref.read(syncServiceProvider);
-    await service.discardOperation(opId);
-    await service.pullAll(userId: userId);
-    await ref.read(logisticsRepositoryProvider).applyRemoteChanges(userId);
-    ref.read(syncRevisionProvider.notifier).state++;
+    try {
+      final service = ref.read(syncServiceProvider);
+      await service.discardOperation(opId);
+      await service.pullAll(userId: userId);
+      await ref.read(logisticsRepositoryProvider).applyRemoteChanges(userId);
+      ref.read(syncRevisionProvider.notifier).state++;
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+              SnackBar(content: Text(syncErrorFromException(error))));
+      }
+    }
   }
 
   @override
@@ -67,6 +87,8 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
       return const Center(child: Text(SyncStrings.noActiveSession));
     }
     final online = ref.watch(homeConnectivityProvider).valueOrNull;
+    final lastSync = ref.watch(lastSuccessfulSyncProvider(user.id)).valueOrNull;
+    final catalogError = ref.watch(catalogReadErrorProvider);
     final operations = ref.watch(syncOperationsProvider(user.id));
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -83,7 +105,11 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
           children: [
-            _SyncSummary(online: online, operations: operations.valueOrNull),
+            _SyncSummary(
+                online: online,
+                lastSync: lastSync,
+                catalogError: catalogError,
+                operations: operations.valueOrNull),
             const SizedBox(height: 16),
             FilledButton.icon(
               onPressed:
@@ -134,9 +160,15 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
 }
 
 class _SyncSummary extends StatelessWidget {
-  const _SyncSummary({required this.online, required this.operations});
+  const _SyncSummary(
+      {required this.online,
+      required this.lastSync,
+      required this.catalogError,
+      required this.operations});
 
   final bool? online;
+  final DateTime? lastSync;
+  final String? catalogError;
   final List<SyncOperationInfo>? operations;
 
   @override
@@ -146,6 +178,11 @@ class _SyncSummary extends StatelessWidget {
     final failed = items
         .where((item) => item.status == 'rejected' || item.status == 'conflict')
         .length;
+    final fullySynced = online == true &&
+        lastSync != null &&
+        pending == 0 &&
+        failed == 0 &&
+        catalogError == null;
     final color = online == true ? AppTheme.forest : AppTheme.earth;
     return Card(
       child: Padding(
@@ -153,22 +190,33 @@ class _SyncSummary extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Icon(
-                online == true
+                fullySynced
                     ? Icons.cloud_done_outlined
-                    : Icons.cloud_off_outlined,
+                    : online == true
+                        ? Icons.cloud_queue_outlined
+                        : Icons.cloud_off_outlined,
                 color: color),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                  online == true
-                      ? SyncStrings.connectedToInternet
-                      : SyncStrings.noInternetConnection,
+                  fullySynced
+                      ? SyncStrings.synced
+                      : online == true
+                          ? SyncStrings.connectedWithPending
+                          : SyncStrings.noInternetConnection,
                   style: Theme.of(context).textTheme.titleMedium),
             ),
           ]),
           const SizedBox(height: 14),
           Text(SyncStrings.pendingSummary(pending)),
           Text(SyncStrings.failedSummary(failed)),
+          const SizedBox(height: 8),
+          Text(lastSync == null
+              ? SyncStrings.neverSynced
+              : SyncStrings.lastSynced(lastSync!)),
+          if (catalogError != null)
+            Text(
+                '${SyncStrings.lotsUpdateFailed}: ${syncErrorText(catalogError)}'),
         ]),
       ),
     );
@@ -196,7 +244,7 @@ class _OperationTile extends StatelessWidget {
               color: _colorFor(operation.status)),
           title: Text('${operation.entity} · ${operation.type}'),
           subtitle: Text(
-              '${_statusLabel(operation.status)}${operation.lastError == null ? '' : '\n${operation.lastError}'}'),
+              '${_statusLabel(operation.status)}${operation.lastError == null ? '' : '\n${syncErrorText(operation.lastError)}'}'),
           isThreeLine: operation.lastError != null,
           trailing:
               onRetry == null && onDiscard == null && onAcceptServer == null

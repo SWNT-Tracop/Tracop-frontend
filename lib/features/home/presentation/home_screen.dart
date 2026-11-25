@@ -1,5 +1,3 @@
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/config/env.dart';
+import '../../../core/network/network_status.dart';
 import '../../../core/sync/sync_provider.dart';
 import '../../../core/i18n/strings.dart';
 import '../../../shared/widgets/lot_interaction_widgets.dart';
@@ -30,38 +29,23 @@ final homeLotsProvider = FutureProvider<List<Lot>>((ref) async {
   final result = await ref.read(catalogRepositoryProvider).getMyLots();
   return result.map(
     ok: (value) {
+      ref.read(catalogReadErrorProvider.notifier).state = null;
       ref.read(homeLotsCacheProvider.notifier).state = value.value;
       return value.value;
     },
-    err: (failure) => throw failure,
+    err: (failure) {
+      ref.read(catalogReadErrorProvider.notifier).state = failure.error.code;
+      throw failure.error;
+    },
   );
 });
 
 final homeConnectivityProvider = StreamProvider<bool>((ref) async* {
-  yield await _hasInternetConnection();
+  yield await hasServerConnection(AppConfig.apiBaseUrl);
   await for (final _ in Stream<void>.periodic(const Duration(seconds: 10))) {
-    yield await _hasInternetConnection();
+    yield await hasServerConnection(AppConfig.apiBaseUrl);
   }
 });
-
-Future<bool> _hasInternetConnection() async {
-  final transport = await Connectivity().checkConnectivity();
-  if (!transport.any((item) => item != ConnectivityResult.none)) return false;
-  final client = Dio(BaseOptions(
-    baseUrl: AppConfig.apiBaseUrl,
-    connectTimeout: const Duration(seconds: 3),
-    receiveTimeout: const Duration(seconds: 3),
-    sendTimeout: const Duration(seconds: 3),
-  ));
-  try {
-    final response = await client.get<void>('/health');
-    return response.statusCode != null && response.statusCode! < 500;
-  } catch (_) {
-    return false;
-  } finally {
-    client.close(force: true);
-  }
-}
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -128,6 +112,7 @@ class HomeScreen extends ConsumerWidget {
                       if (lots.hasError && connectivity != false) ...[
                         const SizedBox(height: 20),
                         _LoadErrorNotice(
+                          errorCode: ref.watch(catalogReadErrorProvider),
                           onRetry: () => ref.invalidate(homeLotsProvider),
                         ),
                       ],
@@ -592,9 +577,10 @@ class _OfflineNotice extends StatelessWidget {
 }
 
 class _LoadErrorNotice extends StatelessWidget {
-  const _LoadErrorNotice({required this.onRetry});
+  const _LoadErrorNotice({required this.onRetry, this.errorCode});
 
   final VoidCallback onRetry;
+  final String? errorCode;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -610,7 +596,9 @@ class _LoadErrorNotice extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'No pudimos actualizar tus lotes.',
+                errorCode == null
+                    ? 'No pudimos actualizar tus lotes.'
+                    : 'No pudimos actualizar tus lotes ($errorCode).',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: const Color(0xFF553B00),
                       fontSize: 14,
