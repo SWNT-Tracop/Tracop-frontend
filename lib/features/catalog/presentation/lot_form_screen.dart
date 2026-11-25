@@ -634,7 +634,7 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
 
   Widget _photosSection({required bool offline}) {
     final count = _photos.length + _pendingPhotos.length;
-    final canAdd = !offline && !_submitting && !_photoBusy && count < 5;
+    final canAdd = !_submitting && !_photoBusy && count < 5;
     return _SectionCard(
       title: 'Fotos del lote',
       subtitle:
@@ -688,7 +688,8 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
           ),
           if (offline) ...[
             const SizedBox(height: 8),
-            const Text('Conéctate para cargar y guardar las fotos.'),
+            const Text(
+                'Puedes agregarlas sin conexión; quedarán pendientes de carga.'),
           ],
           if (_photoError != null) ...[
             const SizedBox(height: 10),
@@ -733,7 +734,7 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
   Widget _pendingPhotoTile(_PendingLotPhoto photo) => _PhotoTile(
         key: ValueKey('pending-lot-photo-${photo.id}'),
         image: Image.memory(photo.bytes, fit: BoxFit.cover),
-        label: 'Pendiente de guardar',
+        label: 'Pendiente de cargar',
         onRemove: _submitting || _photoBusy
             ? null
             : () => setState(() => _pendingPhotos.remove(photo)),

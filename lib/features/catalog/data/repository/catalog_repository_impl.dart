@@ -559,12 +559,24 @@ class CatalogRepositoryImpl implements CatalogRepository {
       );
       return const Ok(<LotPhoto>[]);
     }
-    return _uploadLotPhotoOnline(
+    final result = await _uploadLotPhotoOnline(
       lotId: lotId,
       photoId: photoId,
       filename: filename,
       bytes: bytes,
     );
+    if (result case Err(:final error)) {
+      if (_shouldQueuePhotoFailure(error)) {
+        await _queueLotPhoto(
+          lotId: lotId,
+          photoId: photoId,
+          filename: filename,
+          bytes: bytes,
+        );
+        return const Ok(<LotPhoto>[]);
+      }
+    }
+    return result;
   }
 
   Future<Result<List<LotPhoto>, DomainFailure>> _uploadLotPhotoOnline({
@@ -659,6 +671,13 @@ class CatalogRepositoryImpl implements CatalogRepository {
       }),
     );
   }
+
+  bool _shouldQueuePhotoFailure(DomainFailure failure) =>
+      failure.statusCode >= 500 ||
+      failure.code == 'photo_upload_failed' ||
+      failure.code == 'photo_processing' ||
+      failure.code == 'photo_policy_missing' ||
+      failure.code == 'storage_unavailable';
 
   @override
   Future<Result<List<LotPhoto>, DomainFailure>> deleteLotPhoto(
