@@ -44,4 +44,6 @@ abstract class CatalogRepository {
       String lotId, String photoId);
   Future<Result<List<LotPhoto>, DomainFailure>> reorderLotPhotos(
       String lotId, List<String> photoIds);
+
+  Future<void> syncPendingLotPhotos();
 }

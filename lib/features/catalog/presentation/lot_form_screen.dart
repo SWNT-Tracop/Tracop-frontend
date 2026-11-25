@@ -346,9 +346,7 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
       _existingVersion = saved.version;
     }
 
-    for (final pending in offline
-        ? const <_PendingLotPhoto>[]
-        : List<_PendingLotPhoto>.from(_pendingPhotos)) {
+    for (final pending in List<_PendingLotPhoto>.from(_pendingPhotos)) {
       final photoResult = await repo.uploadLotPhoto(
         lotId: saved.id,
         photoId: pending.id,

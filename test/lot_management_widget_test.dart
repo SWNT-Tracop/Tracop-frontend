@@ -465,6 +465,9 @@ class _LotRepository implements CatalogRepository {
   Future<Result<List<LotPhoto>, DomainFailure>> reorderLotPhotos(
           String lotId, List<String> photoIds) async =>
       const Ok([]);
+
+  @override
+  Future<void> syncPendingLotPhotos() async {}
 }
 
 class _ProducerAuthNotifier extends AuthNotifier {

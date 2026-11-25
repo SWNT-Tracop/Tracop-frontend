@@ -8,6 +8,7 @@ import '../../../core/sync/sync_provider.dart';
 import '../../../core/sync/sync_service.dart';
 import '../../home/presentation/home_screen.dart'
     show homeConnectivityProvider, homeUserProvider;
+import '../../catalog/presentation/providers/catalog_provider.dart';
 import '../../logistics/presentation/logistics_provider.dart';
 
 final syncOperationsProvider =
@@ -32,6 +33,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     try {
       final service = ref.read(syncServiceProvider);
       await service.pushPending(userId: userId);
+      await ref.read(catalogRepositoryProvider).syncPendingLotPhotos();
       await service.pullAll(userId: userId);
       await ref.read(logisticsRepositoryProvider).applyRemoteChanges(userId);
       ref.read(syncRevisionProvider.notifier).state++;

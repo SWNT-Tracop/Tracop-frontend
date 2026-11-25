@@ -14,6 +14,7 @@ import '../../domain/repository/catalog_repository.dart';
 
 class CatalogRepositoryImpl implements CatalogRepository {
   static const _lotTombstonePrefix = 'sync:lot-tombstone:';
+  static const _pendingPhotoPrefix = 'sync:lot-photo:';
   final CatalogRemoteDataSource remote;
   final AppDatabase db;
   final Future<String?> Function()? ownerUserId;
@@ -510,6 +511,29 @@ class CatalogRepositoryImpl implements CatalogRepository {
     required String filename,
     required Uint8List bytes,
   }) async {
+    if (await _isOffline()) {
+      await _queueLotPhoto(
+        lotId: lotId,
+        photoId: photoId,
+        filename: filename,
+        bytes: bytes,
+      );
+      return const Ok(<LotPhoto>[]);
+    }
+    return _uploadLotPhotoOnline(
+      lotId: lotId,
+      photoId: photoId,
+      filename: filename,
+      bytes: bytes,
+    );
+  }
+
+  Future<Result<List<LotPhoto>, DomainFailure>> _uploadLotPhotoOnline({
+    required String lotId,
+    required String photoId,
+    required String filename,
+    required Uint8List bytes,
+  }) async {
     try {
       final preparation = await remote.prepareLotPhotoUpload(lotId, photoId);
       var state = preparation['state'];
@@ -552,6 +576,49 @@ class CatalogRepositoryImpl implements CatalogRepository {
         message: 'No se pudo cargar la foto al almacenamiento.',
       ));
     }
+  }
+
+  @override
+  Future<void> syncPendingLotPhotos() async {
+    if (await _isOffline()) return;
+    final rows = await (db.select(db.syncState)
+          ..where((row) => row.key.like('$_pendingPhotoPrefix%')))
+        .get();
+    for (final row in rows) {
+      try {
+        final value = jsonDecode(row.value) as Map<String, dynamic>;
+        final result = await _uploadLotPhotoOnline(
+          lotId: value['lotId'] as String,
+          photoId: value['photoId'] as String,
+          filename: value['filename'] as String,
+          bytes: base64Decode(value['bytes'] as String),
+        );
+        if (result case Ok()) {
+          await (db.delete(db.syncState)
+                ..where((item) => item.key.equals(row.key)))
+              .go();
+        }
+      } catch (_) {
+        // Keep the item queued for the next connectivity retry.
+      }
+    }
+  }
+
+  Future<void> _queueLotPhoto({
+    required String lotId,
+    required String photoId,
+    required String filename,
+    required Uint8List bytes,
+  }) async {
+    await _writeCache(
+      '$_pendingPhotoPrefix$photoId',
+      jsonEncode({
+        'lotId': lotId,
+        'photoId': photoId,
+        'filename': filename,
+        'bytes': base64Encode(bytes),
+      }),
+    );
   }
 
   @override
