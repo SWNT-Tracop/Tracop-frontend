@@ -16,6 +16,8 @@ import 'core/result/result.dart';
 import 'features/catalog/data/repository/catalog_repository_impl.dart';
 import 'features/catalog/data/remote/catalog_remote.dart';
 import 'features/catalog/presentation/providers/catalog_provider.dart';
+import 'features/catalog/data/repository/product_proposal_repository_impl.dart';
+import 'features/catalog/presentation/providers/product_proposal_provider.dart';
 import 'features/ordering/data/remote/order_remote.dart';
 import 'features/ordering/data/repository/order_repository_impl.dart';
 import 'features/ordering/presentation/providers/order_provider.dart';
@@ -79,6 +81,9 @@ Future<void> main() async {
       overrides: [
         authRepositoryProvider.overrideWithValue(authRepo),
         catalogRepositoryProvider.overrideWithValue(catalogRepo),
+        productProposalRepositoryProvider.overrideWithValue(
+          ProductProposalRepositoryImpl(remote: catalogRemote),
+        ),
         orderRepositoryProvider.overrideWithValue(orderRepo),
         logisticsRepositoryProvider.overrideWithValue(logisticsRepo),
         syncServiceProvider.overrideWithValue(syncService),

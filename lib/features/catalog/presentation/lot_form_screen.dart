@@ -19,12 +19,14 @@ import '../../home/presentation/home_screen.dart';
 import '../domain/entities/category.dart' as catalog;
 import '../domain/entities/lot.dart' hide Category, Product;
 import '../domain/entities/product.dart';
+import '../domain/entities/product_proposal.dart';
 import '../domain/lot_form_rules.dart';
 import '../domain/lot_quantity.dart';
 import 'lot_detail_screen.dart' show lotDetailProvider;
 import 'lot_error_text.dart';
 import 'providers/catalog_provider.dart';
 import 'providers/lot_management_provider.dart';
+import 'providers/product_proposal_provider.dart';
 
 class LotFormScreen extends ConsumerStatefulWidget {
   const LotFormScreen({this.lotId, super.key});
@@ -374,11 +376,12 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
     }
 
     DomainFailure? publishFailure;
+    var queuedForSync = offline || saved.isFromCache;
     if (publish) {
       final outcome = await repo.publishLot(saved.id, saved.version);
       switch (outcome) {
-        case Ok():
-          break;
+        case Ok(:final value):
+          queuedForSync = queuedForSync || value.isFromCache;
         case Err(:final error):
           publishFailure = error;
       }
@@ -391,7 +394,7 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
       saved.id: DateTime.now(),
     };
     _invalidateLotViews(saved.id);
-    final message = offline
+    final message = queuedForSync
         ? (publish
             ? 'Lote guardado localmente y pendiente de publicación.'
             : 'Lote guardado en este dispositivo. Pendiente de sincronización.')
@@ -737,22 +740,19 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
       );
 
   Future<void> _createProduct() async {
-    final created = await showModalBottomSheet<Product>(
+    final proposal = await showModalBottomSheet<ProductProposal>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => const _CreateProductSheet(),
     );
-    if (created == null || !mounted) return;
-    ref.invalidate(catalogProductsProvider);
-    setState(() {
-      _createdProduct = created;
-      _productId = created.id;
-      _unit = created.unit;
-      _fieldErrors.remove('product');
-      if (_fieldErrors.isEmpty) _formError = null;
-    });
+    if (proposal == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content:
+          Text('Propuesta enviada. Quedará disponible cuando sea aprobada.'),
+    ));
+    context.push('/catalogo/propuestas');
   }
 
   void _leave() {
@@ -1495,7 +1495,7 @@ class _ProductField extends StatelessWidget {
         OutlinedButton.icon(
           onPressed: canCreateProduct ? onCreateProduct : null,
           icon: const Icon(Icons.add_rounded),
-          label: const Text('No encuentro mi producto · Crear producto'),
+          label: const Text('No encuentro mi producto · Proponer producto'),
         ),
       ],
     );
@@ -1546,17 +1546,12 @@ class _CreateProductSheetState extends ConsumerState<_CreateProductSheet> {
       setState(() => _error = 'Elige una categoría.');
       return;
     }
-    if (ref.read(homeConnectivityProvider).valueOrNull == false) {
-      setState(() => _error = 'Conéctate a internet para crear el producto.');
-      return;
-    }
-
     setState(() {
       _saving = true;
       _error = null;
     });
-    final result = await ref.read(catalogRepositoryProvider).createProduct(
-          CreateProductRequest(
+    final result = await ref.read(productProposalRepositoryProvider).create(
+          CreateProductProposalRequest(
             id: const Uuid().v7(),
             categoryId: _categoryId!,
             name: name,
@@ -1599,7 +1594,7 @@ class _CreateProductSheetState extends ConsumerState<_CreateProductSheet> {
                 children: [
                   Expanded(
                     child: Text(
-                      'Crear producto',
+                      'Proponer producto',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             color: AppTheme.forest,
                             fontWeight: FontWeight.w700,
@@ -1615,7 +1610,7 @@ class _CreateProductSheetState extends ConsumerState<_CreateProductSheet> {
               ),
               const SizedBox(height: 4),
               const Text(
-                  'El producto quedará disponible en el catálogo para todos. Elige una categoría existente.'),
+                  'La propuesta será revisada antes de aparecer en el catálogo.'),
               const SizedBox(height: 18),
               TextField(
                 key: const ValueKey('new-product-name'),
@@ -1690,7 +1685,7 @@ class _CreateProductSheetState extends ConsumerState<_CreateProductSheet> {
                         dimension: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Crear y usar producto'),
+                    : const Text('Enviar propuesta'),
               ),
             ],
           ),
@@ -1857,7 +1852,7 @@ class _OfflineNotice extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Sin conexión. Puedes preparar los datos, pero guardar requiere señal.',
+                'Sin conexión. El lote se guardará localmente y se sincronizará después.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: AppTheme.warningText,
                       fontSize: 14,
