@@ -13,7 +13,7 @@ void main() {
   test('translates common synchronization outcomes', () {
     expect(syncErrorText('network_error'), contains('conexión'));
     expect(syncErrorText('rate_limited'), contains('solicitudes'));
- 415785   expect(syncErrorText('version_conflict'), contains('versión'));
+    expect(syncErrorText('version_conflict'), contains('versión'));
     expect(syncErrorText('unexpected_failure'), contains('sincronizar'));
   });
 }

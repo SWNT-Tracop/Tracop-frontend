@@ -64,11 +64,20 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   }
 
   Future<void> _acceptServer(String userId, String opId) async {
-    final service = ref.read(syncServiceProvider);
-    await service.discardOperation(opId);
-    await service.pullAll(userId: userId);
-    await ref.read(logisticsRepositoryProvider).applyRemoteChanges(userId);
-    ref.read(syncRevisionProvider.notifier).state++;
+    try {
+      final service = ref.read(syncServiceProvider);
+      await service.discardOperation(opId);
+      await service.pullAll(userId: userId);
+      await ref.read(logisticsRepositoryProvider).applyRemoteChanges(userId);
+      ref.read(syncRevisionProvider.notifier).state++;
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+              SnackBar(content: Text(syncErrorFromException(error))));
+      }
+    }
   }
 
   @override
