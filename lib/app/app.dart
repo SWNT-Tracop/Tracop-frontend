@@ -73,6 +73,18 @@ class _TracopAppState extends ConsumerState<TracopApp> {
           previous?.valueOrNull?.accessToken.isNotEmpty == true;
       final isAuthenticated = next.valueOrNull?.accessToken.isNotEmpty == true;
       if (!wasAuthenticated && isAuthenticated) _sync();
+      final previousUserId = previous?.valueOrNull?.user.id;
+      final nextUserId = next.valueOrNull?.user.id;
+      if (wasAuthenticated &&
+          isAuthenticated &&
+          previousUserId != null &&
+          nextUserId != null &&
+          previousUserId != nextUserId) {
+        // A local account switch keeps the app authenticated, so the normal
+        // unauthenticated -> authenticated hook is not enough.
+        ref.invalidate(homeConnectivityProvider);
+        _sync();
+      }
     });
     return MaterialApp.router(
       title: 'TRACOP',
