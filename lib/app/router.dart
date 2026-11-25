@@ -23,6 +23,7 @@ import '../features/logistics/presentation/logistics_provider.dart'
     show logisticsUserProvider;
 import '../features/catalog/presentation/product_proposals_screen.dart';
 import '../features/sync_status/presentation/sync_status_screen.dart';
+import '../features/notifications/presentation/notifications_screen.dart';
 
 final router = GoRouter(
   initialLocation: '/splash',
@@ -69,6 +70,14 @@ final router = GoRouter(
             context,
             state,
             const SyncStatusScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/notificaciones',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const NotificationsScreen(),
           ),
         ),
         GoRoute(
