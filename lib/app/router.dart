@@ -24,6 +24,14 @@ import '../features/logistics/presentation/logistics_provider.dart'
 import '../features/catalog/presentation/product_proposals_screen.dart';
 import '../features/sync_status/presentation/sync_status_screen.dart';
 import '../features/notifications/presentation/notifications_screen.dart';
+import '../features/payments/domain/payment_permissions.dart';
+import '../features/payments/presentation/screens/buyer_payment_screen.dart';
+import '../features/payments/domain/review_filters.dart';
+import '../features/payments/domain/settlement_filters.dart';
+import '../features/payments/presentation/screens/payment_review_inbox_screen.dart';
+import '../features/payments/presentation/screens/payments_dashboard_screen.dart';
+import '../features/payments/presentation/screens/settlements_screen.dart';
+import '../features/payments/presentation/screens/staff_payment_detail_screen.dart';
 
 final router = GoRouter(
   initialLocation: '/splash',
@@ -45,6 +53,7 @@ final router = GoRouter(
     ShellRoute(
       builder: (context, state, child) => AuthenticatedShell(
         currentLocation: state.uri.path,
+        origin: state.uri.queryParameters['desde'],
         child: child,
       ),
       routes: [
@@ -53,7 +62,7 @@ final router = GoRouter(
           pageBuilder: (context, state) => _routePage(
             context,
             state,
-            const HomeScreen(),
+            const StaffLandingRedirect(child: HomeScreen()),
           ),
         ),
         GoRoute(
@@ -173,6 +182,17 @@ final router = GoRouter(
           ),
         ),
         GoRoute(
+          path: '/pedidos/:id/pago',
+          pageBuilder: (context, state) => _orderRoutePage(
+            context,
+            state,
+            OrderRoleGate(
+              roles: const {'buyer'},
+              child: BuyerPaymentScreen(orderId: state.pathParameters['id']!),
+            ),
+          ),
+        ),
+        GoRoute(
           path: '/pedidos/:id',
           pageBuilder: (context, state) => _orderRoutePage(
             context,
@@ -180,6 +200,75 @@ final router = GoRouter(
             OrderRoleGate(
               roles: const {'buyer', 'producer', 'supplier'},
               child: OrderDetailScreen(orderId: state.pathParameters['id']!),
+            ),
+          ),
+        ),
+        // Personal TRACOP: todas las rutas bajo /pagos/ con la misma
+        // compuerta de rol. Las rutas fijas van antes de /pagos/:id.
+        GoRoute(
+          path: '/pagos/resumen',
+          pageBuilder: (context, state) => _orderRoutePage(
+            context,
+            state,
+            const OrderRoleGate(
+              roles: PaymentPermissions.staffRoles,
+              child: PaymentsDashboardScreen(),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/pagos/revision',
+          pageBuilder: (context, state) {
+            // ?filtro=comprobantes|disputas (accesos del resumen).
+            final filter = state.uri.queryParameters['filtro'];
+            return _orderRoutePage(
+              context,
+              state,
+              OrderRoleGate(
+                roles: PaymentPermissions.staffRoles,
+                child: PaymentReviewInboxScreen(
+                  key: ValueKey('revision-$filter'),
+                  initialFilters: ReviewFilters.fromQuery(filter),
+                ),
+              ),
+            );
+          },
+        ),
+        GoRoute(
+          path: '/pagos/liquidaciones',
+          pageBuilder: (context, state) {
+            // ?estado=emitidas|pagadas|todas&pago=<id de pago>
+            final status = state.uri.queryParameters['estado'];
+            final paymentId = state.uri.queryParameters['pago'] ?? '';
+            return _orderRoutePage(
+              context,
+              state,
+              OrderRoleGate(
+                roles: PaymentPermissions.staffRoles,
+                child: SettlementsScreen(
+                  key: ValueKey('liquidaciones-$status-$paymentId'),
+                  initialStatus: SettlementStatusFilter.fromQuery(status,
+                      fallback: paymentId.isEmpty
+                          ? SettlementStatusFilter.issued
+                          : SettlementStatusFilter.all),
+                  initialQuery: paymentId,
+                ),
+              ),
+            );
+          },
+        ),
+        GoRoute(
+          path: '/pagos/:id',
+          pageBuilder: (context, state) => _orderRoutePage(
+            context,
+            state,
+            OrderRoleGate(
+              roles: PaymentPermissions.staffRoles,
+              child: StaffPaymentDetailScreen(
+                paymentId: state.pathParameters['id']!,
+                fromSettlements:
+                    state.uri.queryParameters['desde'] == 'liquidaciones',
+              ),
             ),
           ),
         ),
@@ -204,8 +293,14 @@ final router = GoRouter(
 
 class AuthenticatedShell extends ConsumerWidget {
   const AuthenticatedShell(
-      {required this.currentLocation, required this.child, super.key});
+      {required this.currentLocation,
+      required this.child,
+      this.origin,
+      super.key});
   final String currentLocation;
+
+  /// Sección de origen (`?desde=`), para resaltar el destino correcto.
+  final String? origin;
   final Widget child;
 
   @override
@@ -225,6 +320,7 @@ class AuthenticatedShell extends ConsumerWidget {
         !notifier.isAuthenticated;
     return ResponsiveShell(
       currentLocation: currentLocation,
+      origin: origin,
       child: bypassSession
           ? Column(
               children: [
@@ -243,6 +339,26 @@ class AuthenticatedShell extends ConsumerWidget {
             )
           : child,
     );
+  }
+}
+
+/// El personal TRACOP no tiene un inicio propio: `/` lo lleva al resumen
+/// de pagos. Es un widget (como `CarrierRoleGate`) porque el rol vive en
+/// Riverpod y el `GoRouter` global no tiene acceso a él.
+class StaffLandingRedirect extends ConsumerWidget {
+  const StaffLandingRedirect({required this.child, super.key});
+  final Widget child;
+
+  static const staffHome = '/pagos/resumen';
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final role = ref.watch(homeUserProvider).valueOrNull?.role;
+    if (!PaymentPermissions.isStaff(role)) return child;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (context.mounted) context.go(staffHome);
+    });
+    return const Center(child: CircularProgressIndicator());
   }
 }
 
