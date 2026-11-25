@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/sync/sync_provider.dart';
+import '../../../home/presentation/home_screen.dart' show homeUserProvider;
 import '../../domain/entities/lot.dart' hide Category, Product;
 import '../../domain/entities/category.dart' as catalog;
 import '../../domain/entities/product.dart';
@@ -19,6 +20,13 @@ final myLotsProvider = FutureProvider<List<Lot>>((ref) async {
 /// Frontend-only timestamps for edits made in this client; does not alter API data.
 final localLotModifiedAtProvider =
     StateProvider<Map<String, DateTime>>((ref) => const {});
+
+final lotSyncStatusesProvider = FutureProvider<Map<String, String>>((ref) {
+  ref.watch(syncRevisionProvider);
+  final userId = ref.watch(homeUserProvider).valueOrNull?.id;
+  if (userId == null) return Future.value(const {});
+  return ref.read(syncServiceProvider).lotOperationStatuses(userId);
+});
 
 /// Lote individual usado para editar un borrador.
 final lotByIdProvider = FutureProvider.family<Lot, String>((ref, id) async {

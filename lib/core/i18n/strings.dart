@@ -19,6 +19,22 @@ abstract final class SyncStrings {
   static const connectionDialogHint =
       'Puedes seguir consultando la información guardada en este dispositivo.';
   static const connectionDialogAction = 'Entendido';
+  static const syncCenter = 'Estado de sincronización';
+  static const syncNow = 'Sincronizar ahora';
+  static const syncingNow = 'Sincronizando…';
+  static const operationsTitle = 'Operaciones guardadas';
+  static const operationsLoadError = 'No pudimos cargar las operaciones.';
+  static const noActiveSession = 'No hay una sesión activa.';
+  static const retryOperation = 'Reintentar';
+  static const discardOperation = 'Descartar';
+  static const acceptServerVersion = 'Usar versión del servidor';
+  static const pendingStatus = 'Pendiente';
+  static const conflictStatus = 'Conflicto';
+  static const rejectedStatus = 'Rechazada';
+  static const appliedStatus = 'Aplicada';
+  static const noPendingOperations = 'No hay operaciones pendientes.';
+  static String pendingSummary(int count) => 'Pendientes: $count';
+  static String failedSummary(int count) => 'Requieren revisión: $count';
   static const updating = 'Actualizando';
   static const failed = 'No se pudo actualizar';
   static const upToDate = 'Al día';
@@ -363,7 +379,12 @@ abstract final class MyLotsStrings {
   static const deleteBody = 'El borrador se eliminará de forma permanente.';
   static const delete = 'Eliminar';
   static const deleted = 'Borrador eliminado.';
-  static const needsConnection = 'Necesitas conexión para hacer este cambio.';
+  static const publishedPending =
+      'Publicación guardada en este dispositivo. Pendiente de sincronización.';
+  static const cancelledPending =
+      'Cancelación guardada en este dispositivo. Pendiente de sincronización.';
+  static const deletedPending =
+      'Eliminación guardada en este dispositivo. Pendiente de sincronización.';
 
   static const view = 'Ver lote';
   static const viewShort = 'Ver';
@@ -372,7 +393,7 @@ abstract final class MyLotsStrings {
   static String availability(String range) => 'Disponibilidad: $range';
 
   static const offline =
-      'Sin conexión. Puedes revisar tus lotes guardados; para publicar, cancelar o eliminar necesitas señal.';
+      'Sin conexión. Los cambios se guardan en este dispositivo y se sincronizan al recuperar señal.';
   static const onlySellers =
       'Solo productores y proveedores pueden publicar lotes.';
   static const exploreOffer = 'Explora la oferta disponible desde la búsqueda.';

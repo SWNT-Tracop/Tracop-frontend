@@ -104,7 +104,24 @@ class ResponsiveShell extends ConsumerWidget {
         builder: (_) => SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-            child: content,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                content,
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      context.push('/sincronizacion');
+                    },
+                    icon: const Icon(Icons.sync),
+                    label: const Text(SyncStrings.syncCenter),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -114,6 +131,14 @@ class ResponsiveShell extends ConsumerWidget {
         builder: (_) => AlertDialog(
           content: content,
           actions: [
+            TextButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                context.push('/sincronizacion');
+              },
+              icon: const Icon(Icons.sync),
+              label: const Text(SyncStrings.syncCenter),
+            ),
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text(SyncStrings.connectionDialogAction),

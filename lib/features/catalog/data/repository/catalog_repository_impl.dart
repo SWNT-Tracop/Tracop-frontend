@@ -13,6 +13,8 @@ import '../../domain/entities/product.dart';
 import '../../domain/repository/catalog_repository.dart';
 
 class CatalogRepositoryImpl implements CatalogRepository {
+  static const _lotTombstonePrefix = 'sync:lot-tombstone:';
+  static const _pendingPhotoPrefix = 'sync:lot-photo:';
   final CatalogRemoteDataSource remote;
   final AppDatabase db;
   final Future<String?> Function()? ownerUserId;
@@ -315,13 +317,21 @@ class CatalogRepositoryImpl implements CatalogRepository {
   Future<LotPage?> _readSearchCache(Map<String, dynamic> query) async {
     final raw = await _readCache(_searchCacheKey(query));
     if (raw == null) return null;
+    final decoded = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    final items = <dynamic>[];
+    for (final item in (decoded['items'] as List<dynamic>? ?? const [])) {
+      final map = Map<String, dynamic>.from(item as Map);
+      if (!await _isLotTombstoned(map['id'] as String)) items.add(map);
+    }
     return LotPage.fromJson({
-      ...(jsonDecode(raw) as Map<String, dynamic>),
+      ...decoded,
+      'items': items,
       '_fromCache': true,
     });
   }
 
   Future<Lot?> _readLotCache(String id) async {
+    if (await _isLotTombstoned(id)) return null;
     final raw = await _readCache('catalog_lot_$id');
     if (raw == null) return null;
     final cachedJson =
@@ -346,8 +356,11 @@ class CatalogRepositoryImpl implements CatalogRepository {
   Future<Result<List<Lot>, DomainFailure>> getMyLots() async {
     try {
       final json = await remote.getMyLots();
-      final items =
-          json.map((e) => Lot.fromJson(e..['isMine'] = true)).toList();
+      final items = [
+        for (final e in json)
+          if (!await _isLotTombstoned(e['id'] as String))
+            Lot.fromJson(e..['isMine'] = true),
+      ];
       final cachedAt = DateTime.now().toUtc();
       await _writeMyLotsCache(items, cachedAt);
       await _cacheLots(items, cachedAt);
@@ -475,13 +488,13 @@ class CatalogRepositoryImpl implements CatalogRepository {
         baseVersion: version,
         payload: const {},
       );
-      await _forgetLot(id);
+      await _forgetLot(id, version: version);
       return const Ok(null);
     }
     try {
       await remote.deleteLot(
           id, PublishCancelRequest(version: version).toJson());
-      await _forgetLot(id);
+      await _forgetLot(id, version: version);
       return const Ok(null);
     } on DomainFailure catch (e) {
       return Err(e);
@@ -493,6 +506,29 @@ class CatalogRepositoryImpl implements CatalogRepository {
 
   @override
   Future<Result<List<LotPhoto>, DomainFailure>> uploadLotPhoto({
+    required String lotId,
+    required String photoId,
+    required String filename,
+    required Uint8List bytes,
+  }) async {
+    if (await _isOffline()) {
+      await _queueLotPhoto(
+        lotId: lotId,
+        photoId: photoId,
+        filename: filename,
+        bytes: bytes,
+      );
+      return const Ok(<LotPhoto>[]);
+    }
+    return _uploadLotPhotoOnline(
+      lotId: lotId,
+      photoId: photoId,
+      filename: filename,
+      bytes: bytes,
+    );
+  }
+
+  Future<Result<List<LotPhoto>, DomainFailure>> _uploadLotPhotoOnline({
     required String lotId,
     required String photoId,
     required String filename,
@@ -540,6 +576,49 @@ class CatalogRepositoryImpl implements CatalogRepository {
         message: 'No se pudo cargar la foto al almacenamiento.',
       ));
     }
+  }
+
+  @override
+  Future<void> syncPendingLotPhotos() async {
+    if (await _isOffline()) return;
+    final rows = await (db.select(db.syncState)
+          ..where((row) => row.key.like('$_pendingPhotoPrefix%')))
+        .get();
+    for (final row in rows) {
+      try {
+        final value = jsonDecode(row.value) as Map<String, dynamic>;
+        final result = await _uploadLotPhotoOnline(
+          lotId: value['lotId'] as String,
+          photoId: value['photoId'] as String,
+          filename: value['filename'] as String,
+          bytes: base64Decode(value['bytes'] as String),
+        );
+        if (result case Ok()) {
+          await (db.delete(db.syncState)
+                ..where((item) => item.key.equals(row.key)))
+              .go();
+        }
+      } catch (_) {
+        // Keep the item queued for the next connectivity retry.
+      }
+    }
+  }
+
+  Future<void> _queueLotPhoto({
+    required String lotId,
+    required String photoId,
+    required String filename,
+    required Uint8List bytes,
+  }) async {
+    await _writeCache(
+      '$_pendingPhotoPrefix$photoId',
+      jsonEncode({
+        'lotId': lotId,
+        'photoId': photoId,
+        'filename': filename,
+        'bytes': base64Encode(bytes),
+      }),
+    );
   }
 
   @override
@@ -687,7 +766,8 @@ class CatalogRepositoryImpl implements CatalogRepository {
     await _writeMyLotsCache(updated, cachedAt);
   }
 
-  Future<void> _forgetLot(String id) async {
+  Future<void> _forgetLot(String id, {int? version}) async {
+    await _writeCache('$_lotTombstonePrefix$id', '${version ?? 0}');
     await (db.delete(db.syncState)
           ..where((row) => row.key.equals('catalog_lot_$id')))
         .go();
@@ -698,6 +778,9 @@ class CatalogRepositoryImpl implements CatalogRepository {
       DateTime.now().toUtc(),
     );
   }
+
+  Future<bool> _isLotTombstoned(String id) async =>
+      await _readCache('$_lotTombstonePrefix$id') != null;
 
   Future<void> _writeMyLotsCache(List<Lot> lots, DateTime cachedAt) async {
     await _writeCache(
@@ -716,13 +799,17 @@ class CatalogRepositoryImpl implements CatalogRepository {
     final raw = await _readCache('catalog_my_lots');
     if (raw == null) return null;
     final data = jsonDecode(raw) as Map<String, dynamic>;
-    return (data['items'] as List)
-        .map((item) => Lot.fromJson({
-              ...(item as Map<String, dynamic>),
-              'isMine': true,
-              '_fromCache': true,
-            }))
-        .toList();
+    final items = <Lot>[];
+    for (final item in (data['items'] as List<dynamic>? ?? const [])) {
+      final map = Map<String, dynamic>.from(item as Map);
+      if (await _isLotTombstoned(map['id'] as String)) continue;
+      items.add(Lot.fromJson({
+        ...map,
+        'isMine': true,
+        '_fromCache': true,
+      }));
+    }
+    return items;
   }
 
   String _lotCachePayload(Lot lot, DateTime cachedAt) => jsonEncode({

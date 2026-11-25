@@ -8,6 +8,7 @@ import '../features/auth/presentation/providers/auth_provider.dart';
 import '../core/sync/sync_provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../features/logistics/presentation/logistics_provider.dart';
+import '../features/catalog/presentation/providers/catalog_provider.dart';
 import './messenger.dart';
 import './router.dart';
 import './theme.dart';
@@ -45,10 +46,12 @@ class _TracopAppState extends ConsumerState<TracopApp> {
   Future<void> _sync() async {
     final session = ref.read(authProvider).valueOrNull;
     if (session?.accessToken.isEmpty != false) return;
+    final userId = session!.user.id;
     try {
-      await ref.read(logisticsRepositoryProvider).syncPending(session!.user.id);
-      await ref.read(syncServiceProvider).pushPending(userId: session.user.id);
-      await ref.read(syncServiceProvider).pullAll(userId: session.user.id);
+      await ref.read(syncServiceProvider).pushPending(userId: userId);
+      await ref.read(catalogRepositoryProvider).syncPendingLotPhotos();
+      await ref.read(syncServiceProvider).pullAll(userId: userId);
+      await ref.read(logisticsRepositoryProvider).applyRemoteChanges(userId);
       ref.read(syncRevisionProvider.notifier).state++;
     } catch (_) {
       // Cached data remains available; the next connectivity event retries.

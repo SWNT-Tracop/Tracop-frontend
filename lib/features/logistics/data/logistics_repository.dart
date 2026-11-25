@@ -1,22 +1,59 @@
 import 'dart:convert';
 
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/storage/app_database.dart';
+import '../../../core/sync/sync_service.dart';
 import 'logistics_remote.dart';
 import '../domain/logistics_models.dart';
 
 class LogisticsRepository {
-  LogisticsRepository({required this.remote, required this.database});
+  LogisticsRepository({
+    required this.remote,
+    required this.database,
+    this.syncService,
+  });
 
   final LogisticsRemoteDataSource remote;
   final AppDatabase database;
+  final SyncService? syncService;
   static const _uuid = Uuid();
   static const _localPaymentCandidatesKey =
       'logistics:local-payment-candidates';
+  static const _remoteChangesPrefix = 'sync:unapplied-changes:';
+
+  /// Applies changes received by the generic sync service to logistics caches.
+  ///
+  /// A check-in is kept until its stops cache exists, because the sync payload
+  /// identifies the stop but does not contain the complete stop projection.
+  Future<void> applyRemoteChanges(String userId) async {
+    final key = '$_remoteChangesPrefix$userId';
+    final changes = await _readCache(key);
+    if (changes == null || changes.isEmpty) return;
+
+    final remaining = <Map<String, dynamic>>[];
+    for (final change in changes) {
+      final entity = change['entity'] as String?;
+      final payload = Map<String, dynamic>.from(
+        (change['payload'] as Map?)?.cast<String, dynamic>() ?? const {},
+      );
+      final applied = switch (entity) {
+        'trip' => await _applyRemoteTrip(userId, change, payload),
+        'checkin' => await _applyRemoteCheckin(userId, payload),
+        'incident' => await _applyRemoteIncident(userId, change, payload),
+        _ => true,
+      };
+      if (!applied) remaining.add(change);
+    }
+    if (remaining.isEmpty) {
+      await (database.delete(database.syncState)
+            ..where((row) => row.key.equals(key)))
+          .go();
+    } else {
+      await _saveCache(key, remaining);
+    }
+  }
 
   Future<List<OrderCandidate>> getCandidates(String userId) async {
     final cacheKey = 'logistics:$userId:candidates';
@@ -41,6 +78,54 @@ class LogisticsRepository {
         .where((candidate) => !queued.contains(candidate.orderId))
         .toList(growable: false);
   }
+
+  Future<bool> _applyRemoteTrip(String userId, Map<String, dynamic> change,
+      Map<String, dynamic> payload) async {
+    final id = change['entityId'] as String?;
+    if (id == null) return true;
+    final key = 'logistics:$userId:trips';
+    final trips = await _readCache(key) ?? [];
+    final index = trips.indexWhere((trip) => trip['id'] == id);
+    final current = index >= 0 ? trips[index] : <String, dynamic>{};
+    final version = _asInt(payload['version'], current['version'] ?? 1);
+    if (index >= 0 && version < _asInt(current['version'], 1)) return true;
+    final merged = <String, dynamic>{
+      ...current,
+      'id': id,
+      'status': payload['status'] as String? ?? current['status'] ?? 'planned',
+      'version': version,
+      'plannedAt': current['plannedAt'] ??
+          (change['occurredAt'] as String? ??
+              DateTime.now().toUtc().toIso8601String()),
+      'isLocalOnly': false,
+    };
+    if (index >= 0) {
+      trips[index] = merged;
+    } else {
+      trips.add(merged);
+    }
+    await _saveCache(key, trips);
+    return true;
+  }
+
+  Future<bool> _applyRemoteCheckin(
+      String userId, Map<String, dynamic> payload) async {
+    final tripId = payload['tripId'] as String?;
+    final stopId = payload['stopId'] as String?;
+    if (tripId == null || stopId == null) return true;
+    final key = 'logistics:$userId:stops:$tripId';
+    final stops = await _readCache(key);
+    if (stops == null) return false;
+    final index = stops.indexWhere((stop) => stop['id'] == stopId);
+    if (index < 0) return true;
+    stops[index]['completedAt'] =
+        payload['clientAt'] ?? DateTime.now().toUtc().toIso8601String();
+    await _saveCache(key, stops);
+    return true;
+  }
+
+  int _asInt(dynamic value, int fallback) =>
+      value is num ? value.toInt() : int.tryParse('$value') ?? fallback;
 
   Future<CarrierProfile?> getCarrierProfile(String userId) async {
     final cacheKey = 'logistics:$userId:profile';
@@ -190,26 +275,27 @@ class LogisticsRepository {
     required String type,
     required String description,
   }) async {
-    final localTrips = await _readCache('logistics:$userId:local-trips') ?? [];
-    if (localTrips.any((trip) => trip['id'] == tripId)) {
-      final key = 'logistics:$userId:local-incidents';
-      final incidents = await _readCache(key) ?? [];
-      incidents.add({
-        'tripId': tripId,
-        'orderId': orderId,
-        'type': type,
-        'description': description,
-        'createdAt': DateTime.now().toUtc().toIso8601String(),
-      });
-      await _saveCache(key, incidents);
-      return;
-    }
+    final incidentId = _uuid.v7();
+    final key = 'logistics:$userId:local-incidents';
+    final incidents = await _readCache(key) ?? [];
+    incidents.add({
+      'id': incidentId,
+      'tripId': tripId,
+      'orderId': orderId,
+      'type': type,
+      'description': description,
+      'status': 'open',
+      'openedAt': DateTime.now().toUtc().toIso8601String(),
+      'closedAt': null,
+    });
+    await _saveCache(key, incidents);
     await _enqueue(
       ownerUserId: userId,
       entity: 'incident',
-      entityId: _uuid.v7(),
+      entityId: incidentId,
       type: 'create',
       payload: {
+        'id': incidentId,
         'tripId': tripId,
         'orderId': orderId,
         'type': type,
@@ -217,6 +303,27 @@ class LogisticsRepository {
       },
     );
     await syncPending(userId);
+  }
+
+  Future<bool> _applyRemoteIncident(String userId, Map<String, dynamic> change,
+      Map<String, dynamic> payload) async {
+    final id = change['entityId'] as String?;
+    if (id == null) return true;
+    final key = 'logistics:$userId:local-incidents';
+    final incidents = await _readCache(key) ?? [];
+    final value = <String, dynamic>{
+      ...payload,
+      'id': id,
+      'isLocalOnly': false,
+    };
+    final index = incidents.indexWhere((item) => item['id'] == id);
+    if (index >= 0) {
+      incidents[index] = {...incidents[index], ...value};
+    } else {
+      incidents.add(value);
+    }
+    await _saveCache(key, incidents);
+    return true;
   }
 
   Future<int> pendingCount(String userId) async => (await (database
@@ -246,75 +353,7 @@ class LogisticsRepository {
   }
 
   Future<void> syncPending(String userId) async {
-    final pending = await (database.select(database.outboxOperations)
-          ..where((row) =>
-              row.ownerUserId.equals(userId) & row.status.equals('pending'))
-          ..orderBy([(row) => OrderingTerm.asc(row.clientTs)])
-          ..limit(50))
-        .get();
-    if (pending.isEmpty) return;
-
-    try {
-      final connection = await Connectivity().checkConnectivity();
-      if (!connection.any((item) => item != ConnectivityResult.none)) return;
-      final body = pending
-          .map((operation) => <String, dynamic>{
-                'opId': operation.opId,
-                'entity': operation.entity,
-                'entityId': operation.entityId,
-                'type': operation.type,
-                'payload': jsonDecode(operation.payloadJson),
-                if (operation.baseVersion != null)
-                  'baseVersion': operation.baseVersion,
-              })
-          .toList(growable: false);
-      final response = await remote.push(body);
-      final results = (response['results'] as List)
-          .map((item) => Map<String, dynamic>.from(item as Map));
-      for (final result in results) {
-        final opId = result['opId'] as String;
-        if (result['status'] == 'applied') {
-          await (database.delete(database.outboxOperations)
-                ..where((row) => row.opId.equals(opId)))
-              .go();
-        } else {
-          await (database.update(database.outboxOperations)
-                ..where((row) => row.opId.equals(opId)))
-              .write(OutboxOperationsCompanion(
-            status: Value(result['status'] as String),
-            lastError: Value(result['code'] as String? ?? 'sync_failed'),
-          ));
-        }
-      }
-    } catch (error) {
-      final errorCode = _syncErrorCode(error);
-      for (final operation in pending) {
-        await (database.update(database.outboxOperations)
-              ..where((row) => row.opId.equals(operation.opId)))
-            .write(OutboxOperationsCompanion(
-          attempts: Value(operation.attempts + 1),
-          nextAttemptAt: Value(DateTime.now().add(const Duration(minutes: 1))),
-          lastError: Value(errorCode),
-        ));
-      }
-    }
-  }
-
-  String _syncErrorCode(Object error) {
-    if (error is DioException) {
-      final status = error.response?.statusCode;
-      if (status != null) return 'http_$status';
-      return switch (error.type) {
-        DioExceptionType.connectionTimeout ||
-        DioExceptionType.sendTimeout ||
-        DioExceptionType.receiveTimeout =>
-          'timeout',
-        DioExceptionType.connectionError => 'network_unreachable',
-        DioExceptionType.cancel => 'request_cancelled',
-        _ => 'network_error',
-      };
-    }
-    return 'sync_response_invalid';
+    await syncService?.pushPending(userId: userId);
   }
 
   Future<void> _enqueue({
