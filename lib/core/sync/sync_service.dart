@@ -9,6 +9,12 @@ import '../network/network_status.dart';
 import '../storage/app_database.dart' hide Category, Product, Lot;
 import 'sync_error_text.dart';
 
+Duration syncRetryDelay(int attempts) {
+  final normalizedAttempts = attempts < 1 ? 1 : attempts;
+  final seconds = 60 * (1 << (normalizedAttempts - 1).clamp(0, 5));
+  return Duration(seconds: seconds > 1800 ? 1800 : seconds);
+}
+
 /// Pulls server changes and applies them to the local database.
 ///
 /// The cursor is a server sequence, not a client timestamp. Changes are
@@ -129,8 +135,9 @@ class SyncService {
               ..where((row) => row.opId.equals(operation.opId)))
             .write(OutboxOperationsCompanion(
           attempts: Value(operation.attempts + 1),
-          nextAttemptAt:
-              Value(DateTime.now().toUtc().add(const Duration(minutes: 1))),
+          nextAttemptAt: Value(DateTime.now()
+              .toUtc()
+              .add(syncRetryDelay(operation.attempts + 1))),
           lastError: Value(syncErrorFromException(error)),
         ));
       }

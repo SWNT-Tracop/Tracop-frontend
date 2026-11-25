@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import '../core/i18n/strings.dart';
 import '../features/home/presentation/home_screen.dart';
+import '../features/notifications/presentation/notifications_provider.dart';
 import 'back_guard.dart';
 import 'messenger.dart';
 import 'theme.dart';
@@ -153,6 +154,10 @@ class ResponsiveShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     ref.listen(homeConnectivityProvider, _onConnectivityChange);
     final user = ref.watch(homeUserProvider).valueOrNull;
+    final unreadNotifications = ref.watch(notificationsProvider).maybeWhen(
+          data: (items) => items.where((item) => item.readAt == null).length,
+          orElse: () => 0,
+        );
     final role = user?.role;
     final destinations = _destinationsFor(role);
     final connectivity = ref.watch(homeConnectivityProvider);
@@ -254,6 +259,17 @@ class ResponsiveShell extends ConsumerWidget {
                   ),
                 ),
                 Tooltip(
+                  message: 'Notificaciones',
+                  child: InkWell(
+                    onTap: () => _guardedGo(context, '/notificaciones'),
+                    borderRadius: BorderRadius.circular(24),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: _NotificationIcon(count: unreadNotifications),
+                    ),
+                  ),
+                ),
+                Tooltip(
                   message: NavStrings.profileTooltip(displayName),
                   child: InkWell(
                     onTap: () => _guardedGo(context, '/perfil'),
@@ -332,42 +348,59 @@ class ResponsiveShell extends ConsumerWidget {
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Row(children: [
-                  Text(
-                    sectionTitle,
-                    style: Theme.of(context).textTheme.titleMedium,
+                  Expanded(
+                    child: Text(
+                      sectionTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                   ),
-                  const Spacer(),
                   _SyncBadge(
                       label: syncLabel,
                       icon: syncIcon,
                       color: syncColor,
+                      compact: width < 800,
                       onTap: () =>
                           _showConnectivityDetails(context, connected)),
                   const SizedBox(width: 18),
-                  InkWell(
-                    onTap: () => _guardedGo(context, '/perfil'),
-                    borderRadius: BorderRadius.circular(22),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 8, horizontal: 4),
-                      child: Row(children: [
-                        CircleAvatar(
-                          radius: 18,
-                          backgroundColor: AppTheme.mint,
-                          foregroundColor: AppTheme.forest,
-                          child: Text(avatarLetter,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w700)),
-                        ),
-                        const SizedBox(width: 10),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 168),
-                          child: Text(displayName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.titleMedium),
-                        ),
-                      ]),
+                  Tooltip(
+                    message: 'Notificaciones',
+                    child: InkWell(
+                      onTap: () => _guardedGo(context, '/notificaciones'),
+                      borderRadius: BorderRadius.circular(24),
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: _NotificationIcon(count: unreadNotifications),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: InkWell(
+                      onTap: () => _guardedGo(context, '/perfil'),
+                      borderRadius: BorderRadius.circular(22),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 8, horizontal: 4),
+                        child: Row(children: [
+                          CircleAvatar(
+                            radius: 18,
+                            backgroundColor: AppTheme.mint,
+                            foregroundColor: AppTheme.forest,
+                            child: Text(avatarLetter,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: Text(displayName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.titleMedium),
+                          ),
+                        ]),
+                      ),
                     ),
                   ),
                 ]),
@@ -387,18 +420,33 @@ class ResponsiveShell extends ConsumerWidget {
   }
 }
 
+class _NotificationIcon extends StatelessWidget {
+  const _NotificationIcon({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) => Badge(
+        isLabelVisible: count > 0,
+        label: Text(count > 99 ? '99+' : '$count'),
+        child: const Icon(Icons.notifications_none_outlined, size: 22),
+      );
+}
+
 // En escritorio el estado se ve con texto, no solo con el icono.
 class _SyncBadge extends StatelessWidget {
   const _SyncBadge({
     required this.label,
     required this.icon,
     required this.color,
+    this.compact = false,
     required this.onTap,
   });
 
   final String label;
   final IconData icon;
   final Color color;
+  final bool compact;
   final VoidCallback onTap;
 
   @override
@@ -409,12 +457,14 @@ class _SyncBadge extends StatelessWidget {
           padding: const EdgeInsets.all(8),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(icon, size: 20, color: color),
-            const SizedBox(width: 8),
-            Text(label,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(color: color, fontSize: 14)),
+            if (!compact) ...[
+              const SizedBox(width: 8),
+              Text(label,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: color, fontSize: 14)),
+            ],
           ]),
         ),
       );

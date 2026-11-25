@@ -468,7 +468,8 @@ class AuthRepositoryImpl implements AuthRepository, LocalAccountRepository {
               row.key.equals('catalog_my_lots') |
               row.key.like('catalog_lot_%') |
               row.key.like('catalog_search_%') |
-              row.key.like('ordering_%')))
+              row.key.like('ordering_%') |
+              row.key.equals('logistics:local-payment-candidates')))
         .go();
     await (db.delete(db.lots)..where((row) => row.isMine.equals(true))).go();
   }

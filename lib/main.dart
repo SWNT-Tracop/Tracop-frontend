@@ -27,6 +27,12 @@ import 'features/logistics/data/logistics_repository.dart';
 import 'features/logistics/presentation/logistics_provider.dart';
 import 'core/sync/sync_provider.dart';
 import 'core/sync/sync_service.dart';
+import 'features/notifications/data/notifications_remote.dart';
+import 'features/notifications/data/notifications_repository.dart';
+import 'features/notifications/presentation/notifications_provider.dart';
+import 'features/trust/data/trust_remote.dart';
+import 'features/trust/data/trust_repository.dart';
+import 'features/trust/presentation/trust_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -87,6 +93,15 @@ Future<void> main() async {
         orderRepositoryProvider.overrideWithValue(orderRepo),
         logisticsRepositoryProvider.overrideWithValue(logisticsRepo),
         syncServiceProvider.overrideWithValue(syncService),
+        notificationsRepositoryProvider.overrideWithValue(
+          NotificationsRepository(
+            remote: NotificationsRemoteDataSource(dioClient),
+            database: db,
+          ),
+        ),
+        trustRepositoryProvider.overrideWithValue(
+          TrustRepository(remote: TrustRemoteDataSource(dioClient)),
+        ),
       ],
       child: const TracopApp(),
     ),

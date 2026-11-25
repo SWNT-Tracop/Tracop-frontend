@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/entities/category.dart';
 import '../../domain/entities/lot.dart' hide Category, Product;
 import '../../domain/entities/product.dart';
@@ -12,6 +13,7 @@ final catalogRepositoryProvider = Provider<CatalogRepository>((ref) {
 final catalogProvider =
     StateNotifierProvider<CatalogNotifier, AsyncValue<Map<String, dynamic>>>(
         (ref) {
+  ref.watch(authProvider);
   final repo = ref.watch(catalogRepositoryProvider);
   return CatalogNotifier(repo);
 });

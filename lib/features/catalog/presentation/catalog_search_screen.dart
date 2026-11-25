@@ -12,6 +12,7 @@ import '../../../core/i18n/strings.dart';
 import '../../../core/sync/sync_provider.dart';
 import '../../../shared/widgets/option_selectors.dart';
 import '../../../shared/widgets/lot_interaction_widgets.dart';
+import '../../../shared/widgets/provider_trust.dart';
 import '../../auth/presentation/providers/auth_provider.dart';
 import '../../home/presentation/home_screen.dart';
 import '../domain/entities/category.dart';
@@ -587,6 +588,15 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
                     .textTheme
                     .bodyLarge
                     ?.copyWith(fontWeight: FontWeight.w600)),
+            if (isBuyer && lot.provider != null) ...[
+              const SizedBox(height: 6),
+              ProviderTrustSummary(
+                verified: lot.provider!.verified,
+                rating: lot.provider!.rating,
+                ratingsCount: lot.provider!.ratingsCount,
+                compact: true,
+              ),
+            ],
             const SizedBox(height: 8),
             Row(children: [
               const Icon(Icons.event_available_outlined,

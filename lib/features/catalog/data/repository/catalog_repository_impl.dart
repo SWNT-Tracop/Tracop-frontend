@@ -8,13 +8,16 @@ import '../../../../core/result/result.dart';
 import '../../../../core/config/env.dart';
 import '../../../../core/network/network_status.dart';
 import '../../../../core/storage/app_database.dart' hide Category, Product, Lot;
+import '../../../../core/sync/sync_service.dart';
+import '../../../../core/sync/sync_error_text.dart';
 import '../remote/catalog_remote.dart';
 import '../../domain/entities/category.dart';
 import '../../domain/entities/lot.dart' hide Category, Product;
 import '../../domain/entities/product.dart';
 import '../../domain/repository/catalog_repository.dart';
 
-class CatalogRepositoryImpl implements CatalogRepository {
+class CatalogRepositoryImpl
+    implements CatalogRepository, PendingPhotoStatusReader {
   static const _lotTombstonePrefix = 'sync:lot-tombstone:';
   static const _pendingPhotoPrefix = 'sync:lot-photo:';
   final CatalogRemoteDataSource remote;
@@ -358,10 +361,26 @@ class CatalogRepositoryImpl implements CatalogRepository {
   Future<Result<List<Lot>, DomainFailure>> getMyLots() async {
     try {
       final json = await remote.getMyLots();
-      final items = [
+      final remoteItems = [
         for (final e in json)
           if (!await _isLotTombstoned(e['id'] as String))
             Lot.fromJson(e..['isMine'] = true),
+      ];
+      final cached = await _readMyLotsCache() ?? const <Lot>[];
+      final pendingIds = await _pendingLotIds();
+      final remoteIds = remoteItems.map((lot) => lot.id).toSet();
+      final remoteById = <String, Lot>{
+        for (final lot in remoteItems) lot.id: lot,
+      };
+      for (final lot in cached) {
+        if (pendingIds.contains(lot.id)) remoteById[lot.id] = lot;
+      }
+      final localOnly = cached.where(
+        (lot) => pendingIds.contains(lot.id) && !remoteIds.contains(lot.id),
+      );
+      final items = [
+        ...localOnly,
+        for (final lot in remoteItems) remoteById[lot.id]!,
       ];
       final cachedAt = DateTime.now().toUtc();
       await _writeMyLotsCache(items, cachedAt);
@@ -630,14 +649,45 @@ class CatalogRepositoryImpl implements CatalogRepository {
   }
 
   @override
+  Future<List<PendingPhotoStatus>> pendingLotPhotoStatuses(String lotId) async {
+    final rows = await (db.select(db.syncState)
+          ..where((row) => row.key.like('$_pendingPhotoPrefix%')))
+        .get();
+    final statuses = <PendingPhotoStatus>[];
+    for (final row in rows) {
+      final value = jsonDecode(row.value) as Map<String, dynamic>;
+      if (value['lotId'] != lotId) continue;
+      statuses.add(PendingPhotoStatus(
+        photoId: value['photoId'] as String,
+        state: value['state'] as String? ?? 'pending',
+        attempts: (value['attempts'] as num?)?.toInt() ?? 0,
+        nextAttemptAt:
+            DateTime.tryParse(value['nextAttemptAt'] as String? ?? '') ??
+                DateTime.now().toUtc(),
+        lastError: value['lastError'] as String?,
+      ));
+    }
+    return statuses;
+  }
+
+  @override
   Future<void> syncPendingLotPhotos() async {
     if (await _isOffline()) return;
+    final now = DateTime.now().toUtc();
     final rows = await (db.select(db.syncState)
           ..where((row) => row.key.like('$_pendingPhotoPrefix%')))
         .get();
     for (final row in rows) {
       try {
         final value = jsonDecode(row.value) as Map<String, dynamic>;
+        final nextAttemptAt = DateTime.tryParse(
+          value['nextAttemptAt'] as String? ?? '',
+        );
+        if (nextAttemptAt != null && nextAttemptAt.isAfter(now)) continue;
+        await _writeCache(
+          row.key,
+          jsonEncode({...value, 'state': 'processing'}),
+        );
         final result = await _uploadLotPhotoOnline(
           lotId: value['lotId'] as String,
           photoId: value['photoId'] as String,
@@ -648,11 +698,35 @@ class CatalogRepositoryImpl implements CatalogRepository {
           await (db.delete(db.syncState)
                 ..where((item) => item.key.equals(row.key)))
               .go();
+        } else if (result case Err(:final error)) {
+          await _deferPendingPhoto(row.key, value, error);
         }
-      } catch (_) {
-        // Keep the item queued for the next connectivity retry.
+      } catch (error) {
+        final value = jsonDecode(row.value) as Map<String, dynamic>;
+        await _deferPendingPhoto(row.key, value, error);
       }
     }
+  }
+
+  Future<void> _deferPendingPhoto(
+    String key,
+    Map<String, dynamic> value,
+    Object error,
+  ) async {
+    final attempts = (value['attempts'] as num?)?.toInt() ?? 0;
+    await _writeCache(
+      key,
+      jsonEncode({
+        ...value,
+        'state': 'error',
+        'attempts': attempts + 1,
+        'nextAttemptAt': DateTime.now()
+            .toUtc()
+            .add(syncRetryDelay(attempts + 1))
+            .toIso8601String(),
+        'lastError': syncErrorFromException(error),
+      }),
+    );
   }
 
   Future<void> _queueLotPhoto({
@@ -668,6 +742,9 @@ class CatalogRepositoryImpl implements CatalogRepository {
         'photoId': photoId,
         'filename': filename,
         'bytes': base64Encode(bytes),
+        'attempts': 0,
+        'state': 'pending',
+        'nextAttemptAt': DateTime.now().toUtc().toIso8601String(),
       }),
     );
   }
@@ -884,6 +961,20 @@ class CatalogRepositoryImpl implements CatalogRepository {
       ...current.where((item) => item.id != lot.id),
     ];
     await _writeMyLotsCache(updated, cachedAt);
+  }
+
+  Future<Set<String>> _pendingLotIds() async {
+    final ownerId = await _ownerId();
+    if (ownerId == null) return <String>{};
+    final rows = await (db.select(db.outboxOperations)
+          ..where((row) =>
+              row.ownerUserId.equals(ownerId) &
+              row.entity.equals('lot') &
+              (row.status.equals('pending') |
+                  row.status.equals('rejected') |
+                  row.status.equals('conflict'))))
+        .get();
+    return rows.map((row) => row.entityId).toSet();
   }
 
   Future<void> _forgetLot(String id, {int? version}) async {

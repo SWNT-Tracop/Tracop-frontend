@@ -62,11 +62,17 @@ class ProviderSummary {
   final String displayName;
   final String municipality;
   final String department;
+  final bool verified;
+  final String? rating;
+  final int ratingsCount;
 
   const ProviderSummary({
     required this.displayName,
     required this.municipality,
     required this.department,
+    this.verified = false,
+    this.rating,
+    this.ratingsCount = 0,
   });
 
   factory ProviderSummary.fromJson(Map<String, dynamic> json) =>
@@ -74,12 +80,18 @@ class ProviderSummary {
         displayName: json['displayName'] as String,
         municipality: json['municipality'] as String,
         department: json['department'] as String,
+        verified: json['verified'] as bool? ?? false,
+        rating: json['rating'] as String?,
+        ratingsCount: (json['ratingsCount'] as num?)?.toInt() ?? 0,
       );
 
   Map<String, dynamic> toJson() => {
         'displayName': displayName,
         'municipality': municipality,
         'department': department,
+        'verified': verified,
+        'rating': rating,
+        'ratingsCount': ratingsCount,
       };
 }
 

@@ -6,6 +6,14 @@ import 'package:tracop_mobile/core/storage/app_database.dart';
 import 'package:tracop_mobile/core/sync/sync_service.dart';
 
 void main() {
+  test('uses capped exponential retry delays', () {
+    expect(syncRetryDelay(1), const Duration(minutes: 1));
+    expect(syncRetryDelay(2), const Duration(minutes: 2));
+    expect(syncRetryDelay(3), const Duration(minutes: 4));
+    expect(syncRetryDelay(5), const Duration(minutes: 16));
+    expect(syncRetryDelay(6), const Duration(minutes: 30));
+  });
+
   late AppDatabase database;
   late SyncService service;
 

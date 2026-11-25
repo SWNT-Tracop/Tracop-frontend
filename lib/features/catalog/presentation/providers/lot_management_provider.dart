@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/sync/sync_provider.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../home/presentation/home_screen.dart' show homeUserProvider;
 import '../../domain/entities/lot.dart' hide Category, Product;
 import '../../domain/entities/category.dart' as catalog;
@@ -10,6 +11,7 @@ import 'catalog_provider.dart';
 /// Lotes del proveedor autenticado, en todos sus estados.
 final myLotsProvider = FutureProvider<List<Lot>>((ref) async {
   ref.watch(syncRevisionProvider);
+  ref.watch(authProvider);
   final result = await ref.read(catalogRepositoryProvider).getMyLots();
   return result.map(
     ok: (value) => value.value,
@@ -31,6 +33,7 @@ final lotSyncStatusesProvider = FutureProvider<Map<String, String>>((ref) {
 /// Lote individual usado para editar un borrador.
 final lotByIdProvider = FutureProvider.family<Lot, String>((ref, id) async {
   ref.watch(syncRevisionProvider);
+  ref.watch(authProvider);
   final result = await ref.read(catalogRepositoryProvider).getLot(id);
   return result.map(
     ok: (value) => value.value,
