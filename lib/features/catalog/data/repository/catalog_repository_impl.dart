@@ -8,6 +8,8 @@ import '../../../../core/result/result.dart';
 import '../../../../core/config/env.dart';
 import '../../../../core/network/network_status.dart';
 import '../../../../core/storage/app_database.dart' hide Category, Product, Lot;
+import '../../../../core/sync/sync_service.dart';
+import '../../../../core/sync/sync_error_text.dart';
 import '../remote/catalog_remote.dart';
 import '../../domain/entities/category.dart';
 import '../../domain/entities/lot.dart' hide Category, Product;
@@ -632,12 +634,17 @@ class CatalogRepositoryImpl implements CatalogRepository {
   @override
   Future<void> syncPendingLotPhotos() async {
     if (await _isOffline()) return;
+    final now = DateTime.now().toUtc();
     final rows = await (db.select(db.syncState)
           ..where((row) => row.key.like('$_pendingPhotoPrefix%')))
         .get();
     for (final row in rows) {
       try {
         final value = jsonDecode(row.value) as Map<String, dynamic>;
+        final nextAttemptAt = DateTime.tryParse(
+          value['nextAttemptAt'] as String? ?? '',
+        );
+        if (nextAttemptAt != null && nextAttemptAt.isAfter(now)) continue;
         final result = await _uploadLotPhotoOnline(
           lotId: value['lotId'] as String,
           photoId: value['photoId'] as String,
@@ -648,11 +655,34 @@ class CatalogRepositoryImpl implements CatalogRepository {
           await (db.delete(db.syncState)
                 ..where((item) => item.key.equals(row.key)))
               .go();
+        } else if (result case Err(:final error)) {
+          await _deferPendingPhoto(row.key, value, error);
         }
-      } catch (_) {
-        // Keep the item queued for the next connectivity retry.
+      } catch (error) {
+        final value = jsonDecode(row.value) as Map<String, dynamic>;
+        await _deferPendingPhoto(row.key, value, error);
       }
     }
+  }
+
+  Future<void> _deferPendingPhoto(
+    String key,
+    Map<String, dynamic> value,
+    Object error,
+  ) async {
+    final attempts = (value['attempts'] as num?)?.toInt() ?? 0;
+    await _writeCache(
+      key,
+      jsonEncode({
+        ...value,
+        'attempts': attempts + 1,
+        'nextAttemptAt': DateTime.now()
+            .toUtc()
+            .add(syncRetryDelay(attempts + 1))
+            .toIso8601String(),
+        'lastError': syncErrorFromException(error),
+      }),
+    );
   }
 
   Future<void> _queueLotPhoto({
@@ -668,6 +698,8 @@ class CatalogRepositoryImpl implements CatalogRepository {
         'photoId': photoId,
         'filename': filename,
         'bytes': base64Encode(bytes),
+        'attempts': 0,
+        'nextAttemptAt': DateTime.now().toUtc().toIso8601String(),
       }),
     );
   }
