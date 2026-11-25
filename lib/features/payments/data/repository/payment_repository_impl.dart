@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../../../../core/result/result.dart';
 import '../../domain/entities/payment.dart';
+import '../../domain/proof_upload_cancellation.dart';
 import '../../domain/repository/payment_repository.dart';
 import '../remote/payment_remote.dart';
 
@@ -41,17 +42,32 @@ class PaymentRepositoryImpl implements PaymentRepository {
 
   @override
   Future<Result<Payment, DomainFailure>> uploadProof(
-      String paymentId, ProofFile file) async {
+      String paymentId, ProofFile file,
+      {ProofUploadCancellation? cancellation}) async {
+    // Un token por carga: al cancelar se corta el POST al almacenamiento.
+    final cancelToken = CancelToken();
+    cancellation?.whenCancelled.then((_) {
+      if (!cancelToken.isCancelled) cancelToken.cancel();
+    });
+    bool cancelled() => cancellation?.isCancelled ?? false;
     // Dos intentos como máximo: si la autorización venció (403 del
     // almacenamiento o 410 en la confirmación) se pide una nueva una vez.
     for (var attempt = 0; attempt < 2; attempt++) {
       try {
+        if (cancelled()) return const Err(_cancelledFailure);
         final policy = ProofUploadPolicy.fromJson(
             await remote.requestProofUpload(paymentId));
-        await _sendToStorage(policy, file);
+        if (cancelled()) return const Err(_cancelledFailure);
+        await _sendToStorage(policy, file, cancelToken);
+        // La confirmación no se cancela a mitad de camino (el servidor
+        // podría registrarla igual); solo no se inicia si ya se canceló. El
+        // objeto subido sin confirmar no cambia el pago.
+        if (cancelled()) return const Err(_cancelledFailure);
         return Ok(Payment.fromJson(await remote.confirmProof(paymentId)));
       } on _PolicyExpired {
         continue;
+      } on _UploadCancelled {
+        return const Err(_cancelledFailure);
       } on Object catch (error) {
         final failure = paymentFailure(error);
         if (failure.code == 'proof_expired') continue;
@@ -77,15 +93,18 @@ class PaymentRepositoryImpl implements PaymentRepository {
     ));
   }
 
-  Future<void> _sendToStorage(ProofUploadPolicy policy, ProofFile file) async {
+  Future<void> _sendToStorage(
+      ProofUploadPolicy policy, ProofFile file, CancelToken cancelToken) async {
     try {
       await remote.uploadProofObject(
         url: policy.url,
         fields: policy.fields,
         filename: file.filename,
         bytes: file.bytes,
+        cancelToken: cancelToken,
       );
     } on DioException catch (error) {
+      if (error.type == DioExceptionType.cancel) throw const _UploadCancelled();
       // Errores del almacenamiento externo: su mensaje incluye la URL
       // firmada, así que se traducen a un código sin conservar el detalle.
       final status = error.response?.statusCode;
@@ -188,6 +207,17 @@ const proofRegisteredStatuses = {
 class _PolicyExpired implements Exception {
   const _PolicyExpired();
 }
+
+class _UploadCancelled implements Exception {
+  const _UploadCancelled();
+}
+
+/// Resultado de una carga cancelada por el usuario (no es un error).
+const _cancelledFailure = DomainFailure(
+  statusCode: 499,
+  code: proofUploadCancelledCode,
+  message: 'Carga cancelada.',
+);
 
 bool _isOffline(DioException error) =>
     error.type == DioExceptionType.connectionError ||

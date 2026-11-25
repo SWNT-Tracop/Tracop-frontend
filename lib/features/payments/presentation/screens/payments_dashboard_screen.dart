@@ -157,7 +157,9 @@ class PaymentsDashboard extends StatelessWidget {
         icon: Icons.receipt_long_outlined,
         label: PaymentsDashboardStrings.paidOrders,
         value: AppFormats.cop(metrics.paidOrdersTotalCop),
-        detail: PaymentsDashboardStrings.paidOrdersHint,
+        detail:
+            '${PaymentsDashboardStrings.paidOrdersCount(metrics.paidOrdersCount)}'
+            ' · ${PaymentsDashboardStrings.paidOrdersHint}',
       ),
     ];
 

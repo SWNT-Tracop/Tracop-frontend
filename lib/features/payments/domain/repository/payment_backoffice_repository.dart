@@ -1,4 +1,5 @@
 import '../../../../core/result/result.dart';
+import '../entities/audit_entry.dart';
 import '../entities/ledger.dart';
 import '../entities/payments_metrics.dart';
 import '../entities/settlement.dart';
@@ -21,4 +22,14 @@ abstract interface class PaymentBackofficeRepository {
       String orderId);
 
   Future<Result<PaymentsMetrics, DomainFailure>> metrics();
+
+  /// `GET /backoffice/audit`, más recientes primero (solo admin). `limit`
+  /// 1..100.
+  Future<Result<AuditPage, DomainFailure>> audit({
+    required String entity,
+    required String entityId,
+    String? action,
+    String? cursor,
+    int limit = 50,
+  });
 }

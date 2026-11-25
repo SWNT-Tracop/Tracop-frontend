@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tracop_mobile/core/result/result.dart';
 import 'package:tracop_mobile/features/payments/data/remote/payment_backoffice_remote.dart';
 import 'package:tracop_mobile/features/payments/data/repository/payment_backoffice_repository_impl.dart';
+import 'package:tracop_mobile/features/payments/domain/entities/audit_entry.dart';
 import 'package:tracop_mobile/features/payments/domain/entities/settlement.dart';
 
 import 'support/payment_fixtures.dart';
@@ -45,6 +46,18 @@ class _FakeRemote implements PaymentBackofficeRemoteDataSource {
 
   @override
   Future<Map<String, dynamic>> metrics() async => metricsJson();
+
+  final auditQueries = <Map<String, dynamic>>[];
+
+  @override
+  Future<Map<String, dynamic>> audit(Map<String, dynamic> query) async {
+    auditQueries.add(query);
+    if (error != null) throw error!;
+    return {
+      'items': [auditEntryJson()],
+      'nextCursor': 'abc',
+    };
+  }
 }
 
 DioException _apiError(int status, String code) => DioException(
@@ -58,6 +71,41 @@ DioException _apiError(int status, String code) => DioException(
     );
 
 void main() {
+  group('audit', () {
+    test('sends only keys accepted by the strict schema', () async {
+      final remote = _FakeRemote();
+      final repository = PaymentBackofficeRepositoryImpl(remote: remote);
+      final result =
+          await repository.audit(entity: 'payment', entityId: paymentId);
+      expect(remote.auditQueries.single,
+          {'entity': 'payment', 'entityId': paymentId, 'limit': 50});
+      final page = (result as Ok<AuditPage, DomainFailure>).value;
+      expect(page.items.single.action, 'payment.verify');
+      expect(page.nextCursor, 'abc');
+
+      await repository.audit(
+          entity: 'settlement',
+          entityId: settlementId,
+          action: 'settlement.mark_paid',
+          cursor: 'abc',
+          limit: 500);
+      expect(remote.auditQueries.last, {
+        'entity': 'settlement',
+        'entityId': settlementId,
+        'action': 'settlement.mark_paid',
+        'cursor': 'abc',
+        'limit': 100,
+      });
+    });
+
+    test('maps a 403 to a DomainFailure', () async {
+      final remote = _FakeRemote()..error = _apiError(403, 'forbidden');
+      final result = await PaymentBackofficeRepositoryImpl(remote: remote)
+          .audit(entity: 'payment', entityId: paymentId);
+      expect((result as Err<AuditPage, DomainFailure>).error.code, 'forbidden');
+    });
+  });
+
   late _FakeRemote remote;
   late PaymentBackofficeRepositoryImpl repository;
 

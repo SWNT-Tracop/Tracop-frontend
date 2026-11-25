@@ -20,11 +20,13 @@ abstract interface class PaymentRemoteDataSource {
       String paymentId, Map<String, dynamic> body);
 
   /// POST multipart directo al almacenamiento con la política prefirmada.
+  /// `cancelToken` corta el envío (DioException de tipo `cancel`).
   Future<void> uploadProofObject({
     required String url,
     required Map<String, String> fields,
     required String filename,
     required List<int> bytes,
+    CancelToken? cancelToken,
   });
 }
 
@@ -103,6 +105,7 @@ class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
     required Map<String, String> fields,
     required String filename,
     required List<int> bytes,
+    CancelToken? cancelToken,
   }) async {
     // Igual que en catálogo: un Dio aparte, sin el interceptor ni el header
     // Authorization del API, para no enviar el token al almacenamiento.
@@ -116,6 +119,7 @@ class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
       await storage.post<void>(
         url,
         data: form,
+        cancelToken: cancelToken,
         options: Options(
           contentType: Headers.multipartFormDataContentType,
           responseType: ResponseType.plain,

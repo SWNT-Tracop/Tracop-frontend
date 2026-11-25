@@ -603,6 +603,12 @@ abstract final class PaymentStrings {
         _ => 'Estado desconocido ($wire)',
       };
 
+  /// Rótulo para mostrar un pago: igual que `status`, salvo una disputa
+  /// liberada (el API la devuelve como `held` con `disputeReason`).
+  static String statusLabel(String wire, {bool disputeResolved = false}) =>
+      disputeResolved ? disputeResolvedLabel : status(wire);
+  static const disputeResolvedLabel = 'Disputa resuelta';
+
   static const methodTransfer = 'Transferencia';
   static const methodNequi = 'Nequi';
   static String method(String wire) => switch (wire) {
@@ -679,6 +685,8 @@ abstract final class PaymentStrings {
       'No pudimos validar el comprobante. Puedes iniciar un nuevo pago.';
   static const statusDisputedBody =
       'Abriste una disputa. El equipo de TRACOP la revisará y te contactará.';
+  static const statusDisputeResolvedBody =
+      'TRACOP revisó la disputa y decidió continuar con el pedido. El pago sigue su curso hacia la liquidación al proveedor.';
   static const statusSettledBody =
       'El pago se completó y se liquidó al proveedor.';
   static const statusRefundedBody =
@@ -691,6 +699,10 @@ abstract final class PaymentStrings {
   static const proofTitle = 'Comprobante de pago';
   static const uploadProof = 'Subir comprobante';
   static const uploadingProof = 'Subiendo comprobante…';
+  static const cancelUpload = 'Cancelar';
+  static const cancelUploadTooltip = 'Cancelar la carga del comprobante';
+  static const uploadCancelled =
+      'Carga cancelada. Tu pago no cambió; puedes subir el comprobante cuando quieras.';
   static const chooseFromGallery = 'Elegir de la galería';
   static const takePhoto = 'Tomar foto';
   static String proofRequirements(int megabytes) =>
@@ -718,6 +730,7 @@ abstract final class PaymentStrings {
   static const milestoneRejected = 'Comprobante rechazado';
   static const milestoneHeld = 'Pedido entregado, pago retenido';
   static const milestoneDisputed = 'Disputa abierta';
+  static const milestoneDisputeResolved = 'Disputa resuelta';
   static const milestoneNoDate = 'Fecha no registrada';
   static String milestoneCurrent(String status) =>
       'Última actualización: $status';
@@ -763,6 +776,13 @@ abstract final class PaymentStrings {
   static const reviewNoMatchesBody = 'Cambia los filtros o la búsqueda.';
   static const clearFilters = 'Limpiar filtros';
   static const reviewLoadError = 'No pudimos cargar la cola de revisión.';
+  static String reviewHidden(int count) => count == 1
+      ? 'Hay 1 pendiente más que no se muestra.'
+      : 'Hay $count pendientes más que no se muestran.';
+  static const reviewHiddenUnknown =
+      'Puede haber más pendientes que no se muestran.';
+  static const reviewHiddenHelp =
+      'El servidor entrega como máximo 100, empezando por los que llevan más tiempo sin cambios; los más recientes quedan fuera. Resuelve los más antiguos primero y actualiza para ver los siguientes.';
   static const columnPayment = 'Pago';
   static const columnOrder = 'Pedido';
   static const columnMethod = 'Medio';
@@ -776,6 +796,7 @@ abstract final class PaymentStrings {
     return 'hace ${age.inDays} d';
   }
 
+  static String waitingSinceAt(String dateTime) => 'Desde $dateTime';
   static String overdue(int hours) => 'Más de $hours h';
   static const overdueTooltip = 'Lleva más tiempo del esperado sin revisión.';
   static String shortId(String id) => id.substring(0, 8).toUpperCase();
@@ -840,6 +861,25 @@ abstract final class PaymentStrings {
   static const confirmRefund = 'Registrar reembolso';
   static const resolved = 'Disputa resuelta.';
 
+  // Auditoría (solo administración).
+  static const auditTitle = 'Auditoría';
+  static const auditHint =
+      'Acciones del personal sobre este pago, de la más reciente a la más antigua. Solo la ve administración.';
+  static const auditEmpty = 'No hay acciones registradas para este pago.';
+  static const auditLoadError = 'No pudimos cargar la auditoría.';
+  static const auditLoadMore = 'Cargar más';
+  static const auditSystem = 'Sistema';
+  static String auditActor(String role, String? shortId) =>
+      shortId == null ? 'Por $role' : 'Por $role · $shortId';
+  static String auditAction(String action) => switch (action) {
+        'payment.verify' => 'Pago verificado',
+        'payment.reject' => 'Comprobante rechazado',
+        'payment.dispute_release' => 'Disputa liberada al proveedor',
+        'payment.dispute_refund' => 'Disputa resuelta con reembolso',
+        'settlement.mark_paid' => 'Liquidación marcada como pagada',
+        _ => action,
+      };
+
   static const conflictTitle = 'El pago cambió';
   static const conflictBody =
       'Otra persona actualizó este pago mientras lo revisabas. Carga la última versión y revisa antes de continuar.';
@@ -880,6 +920,11 @@ abstract final class SettlementStrings {
   static const periodAll = 'Cualquier fecha';
   static const period7 = 'Últimos 7 días';
   static const period30 = 'Últimos 30 días';
+  static const periodRange = 'Elegir fechas…';
+  static String periodRangeLabel(String from, String to) =>
+      from == to ? from : '$from – $to';
+  static const clearRange = 'Quitar rango de fechas';
+  static const rangePickerHelp = 'Fecha de emisión (hora de Colombia)';
 
   // `producer` es el proveedor del pedido (productor o proveedor).
   static String kind(String wire) => switch (wire) {
@@ -947,6 +992,16 @@ abstract final class SettlementStrings {
       'No pudimos cargar las liquidaciones de este pago.';
   static String paidOn(String date) => 'Pagada el $date';
   static String issuedOn(String date) => 'Emitida el $date';
+
+  // Quién marcó la liquidación como pagada (auditoría, solo administración).
+  static const showPaidBy = 'Ver quién la marcó pagada';
+  static String paidBy(String role, String? shortId, String date) =>
+      'Marcada pagada por $role${shortId == null ? '' : ' · $shortId'} el $date';
+  static const paidByMissing =
+      'No hay registro en la auditoría de quién la marcó pagada.';
+  static const paidByError = 'No pudimos consultar la auditoría.';
+  static const paidByUnavailable =
+      'Quién la marcó pagada: no disponible (solo administración ve la auditoría).';
 }
 
 abstract final class LedgerStrings {
@@ -998,6 +1053,8 @@ abstract final class PaymentsDashboardStrings {
   static const paid = 'Liquidaciones pagadas';
   static const paidOrders = 'Pedidos pagados';
   static const paidOrdersHint = 'Total cobrado a compradores';
+  static String paidOrdersCount(int value) =>
+      count(value, 'pedido pagado', 'pedidos pagados');
   static String count(int value, String singular, String plural) =>
       '$value ${value == 1 ? singular : plural}';
   static String settlementsCount(int value) =>

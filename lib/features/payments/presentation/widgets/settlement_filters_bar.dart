@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
+import '../../../../core/i18n/formats.dart';
 import '../../../../core/i18n/strings.dart';
 import '../../domain/entities/settlement.dart';
 import '../../domain/settlement_filters.dart';
@@ -53,9 +55,37 @@ class _SettlementFiltersBarState extends State<SettlementFiltersBar> {
     );
   }
 
+  /// Calendario en español (la app fija `es_CO`) sobre la fecha de emisión.
+  Future<void> _pickRange() async {
+    final filters = widget.filters;
+    final today = AppFormats.toBogota(DateTime.now());
+    final last = DateTime(today.year, today.month, today.day);
+    final current = filters.range;
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2024),
+      lastDate: last,
+      initialDateRange: current == null || current.end.isAfter(last)
+          ? null
+          : DateTimeRange(
+              start: DateTime(
+                  current.start.year, current.start.month, current.start.day),
+              end: DateTime(
+                  current.end.year, current.end.month, current.end.day)),
+      helpText: SettlementStrings.rangePickerHelp,
+    );
+    if (picked == null || !mounted) return;
+    widget.onChanged(filters
+        .withRange(SettlementDateRange(start: picked.start, end: picked.end)));
+  }
+
+  static String _day(DateTime day) =>
+      DateFormat('d MMM y', AppFormats.locale).format(day);
+
   @override
   Widget build(BuildContext context) {
     final filters = widget.filters;
+    final range = filters.range;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -111,9 +141,27 @@ class _SettlementFiltersBarState extends State<SettlementFiltersBar> {
             ])
               ChoiceChip(
                 label: Text(label),
-                selected: filters.period == value,
-                onSelected: (_) =>
-                    widget.onChanged(filters.copyWith(period: value)),
+                selected: range == null && filters.period == value,
+                onSelected: (_) => widget.onChanged(filters.withPeriod(value)),
+              ),
+            if (range == null)
+              ActionChip(
+                key: const Key('settlement-range-pick'),
+                avatar: const Icon(Icons.date_range_outlined, size: 18),
+                label: const Text(SettlementStrings.periodRange),
+                onPressed: _pickRange,
+              )
+            else
+              InputChip(
+                key: const Key('settlement-range-chip'),
+                avatar: const Icon(Icons.date_range_outlined, size: 18),
+                label: Text(SettlementStrings.periodRangeLabel(
+                    _day(range.start), _day(range.end))),
+                selected: true,
+                showCheckmark: false,
+                onPressed: _pickRange,
+                onDeleted: () => widget.onChanged(filters.withRange(null)),
+                deleteButtonTooltipMessage: SettlementStrings.clearRange,
               ),
           ]),
         ]),

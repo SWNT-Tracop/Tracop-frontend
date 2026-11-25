@@ -27,6 +27,11 @@ void main() {
       _failure(0, 'proof_file_unreadable'): contains('No pudimos leer'),
       _failure(502, 'storage_upload_failed'): contains('subir la imagen'),
       _failure(503, 'lock_timeout'): contains('no está disponible'),
+      _failure(503, 'statement_timeout'): contains('otra operación'),
+      _failure(409, 'ledger_already_posted'): contains('libro contable'),
+      _failure(400, 'unbalanced_ledger'): contains('no cuadran'),
+      _failure(400, 'invalid_ledger_line'): contains('no cuadran'),
+      _failure(409, 'carrier_unknown'): contains('transportista'),
       _failure(409, 'something_new'): contains('cambió de estado'),
       _failure(400, 'bad_request'): contains('No pudimos completar'),
     };

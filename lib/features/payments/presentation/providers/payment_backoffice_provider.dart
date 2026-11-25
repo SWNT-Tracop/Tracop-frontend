@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../domain/entities/audit_entry.dart';
 import '../../domain/entities/ledger.dart';
 import '../../domain/entities/payments_metrics.dart';
 import '../../domain/entities/settlement.dart';
@@ -59,6 +60,35 @@ final paymentsMetricsProvider =
       ok: (value) => value.value, err: (failure) => throw failure.error);
 });
 
+/// Primera página de la auditoría de un pago (solo admin). "Cargar más" la
+/// sigue con `nextCursor` desde el widget.
+final paymentAuditProvider = FutureProvider.autoDispose
+    .family<AuditPage, String>((ref, paymentId) async {
+  ref.watch(authProvider);
+  final result = await ref
+      .read(paymentBackofficeRepositoryProvider)
+      .audit(entity: AuditTargets.payment, entityId: paymentId);
+  return result.map(
+      ok: (value) => value.value, err: (failure) => throw failure.error);
+});
+
+/// Quién marcó pagada una liquidación: entrada `settlement.mark_paid` más
+/// reciente. Solo se pide cuando un admin la solicita (una consulta por
+/// liquidación, no N al abrir el detalle). `null` = sin registro.
+final settlementPaidByProvider = FutureProvider.autoDispose
+    .family<AuditEntry?, String>((ref, settlementId) async {
+  ref.watch(authProvider);
+  final result = await ref.read(paymentBackofficeRepositoryProvider).audit(
+        entity: AuditTargets.settlement,
+        entityId: settlementId,
+        action: AuditTargets.settlementMarkPaid,
+        limit: 1,
+      );
+  return result.map(
+      ok: (value) => value.value.items.firstOrNull,
+      err: (failure) => throw failure.error);
+});
+
 /// Tras marcar una liquidación se recargan las vistas que dependen de ella:
 /// listas, métricas, libro y el pago (puede quedar `settled`).
 void invalidateAfterSettlementChange(WidgetRef ref) {
@@ -67,4 +97,6 @@ void invalidateAfterSettlementChange(WidgetRef ref) {
   ref.invalidate(paymentsMetricsProvider);
   ref.invalidate(orderLedgerProvider);
   ref.invalidate(paymentDetailProvider);
+  ref.invalidate(paymentAuditProvider);
+  ref.invalidate(settlementPaidByProvider);
 }

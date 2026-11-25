@@ -12,6 +12,7 @@ import '../../../../core/result/result.dart';
 import '../../domain/entities/payment.dart';
 import '../../domain/review_filters.dart';
 import '../payment_error_text.dart';
+import '../providers/payment_backoffice_provider.dart';
 import '../providers/payment_provider.dart';
 import '../widgets/payment_filters.dart';
 import '../widgets/payment_states.dart';
@@ -68,7 +69,11 @@ class _PaymentReviewInboxScreenState
     super.dispose();
   }
 
-  void _refresh() => ref.invalidate(paymentReviewQueueProvider);
+  void _refresh() {
+    ref.invalidate(paymentReviewQueueProvider);
+    // Las métricas dicen cuántos pendientes hay en total (aviso de corte).
+    ref.invalidate(paymentsMetricsProvider);
+  }
 
   void _open(Payment payment) => context.push('/pagos/${payment.id}');
 
@@ -147,6 +152,20 @@ class _PaymentReviewInboxScreenState
     );
   }
 
+  /// Pendientes que el servidor no entregó: `GET /payments/review` corta en
+  /// 100 ordenando por `updatedAt` ascendente, así que quedan fuera los más
+  /// recientes. `null` = sin aviso; `0` = posible corte sin cifra exacta.
+  /// Below the limit the queue is complete: queue and metrics are separate
+  /// requests, so a gap between them must not be reported as hidden items.
+  int? _hiddenPending(int loaded) {
+    if (loaded < PaymentConfig.reviewQueueLimit) return null;
+    final metrics = ref.watch(paymentsMetricsProvider).valueOrNull;
+    final total = metrics == null
+        ? null
+        : metrics.proofsAwaitingReview + metrics.openDisputes;
+    return total != null && total > loaded ? total - loaded : 0;
+  }
+
   List<Widget> _results(List<Payment> all, DateTime now) {
     if (all.isEmpty) {
       return const [
@@ -158,7 +177,12 @@ class _PaymentReviewInboxScreenState
       ];
     }
     final visible = _filters.apply(all);
+    final hidden = _hiddenPending(all.length);
     return [
+      if (hidden != null) ...[
+        ReviewHiddenAlert(count: hidden),
+        const SizedBox(height: 12),
+      ],
       if (ref.watch(paymentReviewQueueProvider).hasError)
         const Padding(
           padding: EdgeInsets.only(bottom: 12),
@@ -187,4 +211,43 @@ class _PaymentReviewInboxScreenState
         ),
     ];
   }
+}
+
+/// Aviso de pendientes de revisión que el servidor no entregó.
+class ReviewHiddenAlert extends StatelessWidget {
+  const ReviewHiddenAlert({super.key, required this.count});
+
+  /// `0` cuando se llegó al máximo pero no se sabe cuántos faltan.
+  final int count;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        key: const Key('review-hidden-alert'),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppTheme.dangerSurface,
+          borderRadius: BorderRadius.circular(AppTheme.radiusControl),
+        ),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Icon(Icons.warning_amber_rounded, color: AppTheme.dangerText),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                    count > 0
+                        ? PaymentStrings.reviewHidden(count)
+                        : PaymentStrings.reviewHiddenUnknown,
+                    style: const TextStyle(
+                        color: AppTheme.dangerText,
+                        fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                const Text(PaymentStrings.reviewHiddenHelp,
+                    style: TextStyle(color: AppTheme.dangerText)),
+              ],
+            ),
+          ),
+        ]),
+      );
 }

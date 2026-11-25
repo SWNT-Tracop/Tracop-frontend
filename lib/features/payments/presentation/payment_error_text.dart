@@ -1,5 +1,7 @@
 import '../../../core/config/payment_config.dart';
+import '../../../core/i18n/strings.dart';
 import '../../../core/result/result.dart';
+import '../domain/proof_upload_cancellation.dart';
 
 /// Único lugar donde los errores de pagos se traducen a español. Nunca
 /// muestra el mensaje técnico ni URLs: solo textos propios.
@@ -41,6 +43,7 @@ String paymentErrorText(DomainFailure failure) => switch (failure.code) {
         'El comprobante debe ser una imagen JPEG, PNG o WebP.',
       'proof_file_unreadable' =>
         'No pudimos leer el archivo. Verifica que exista y elige otra imagen.',
+      proofUploadCancelledCode => PaymentStrings.uploadCancelled,
       'storage_upload_failed' =>
         'No pudimos subir la imagen. Tu pago no cambió; intenta de nuevo.',
       'idempotency_conflict' ||
@@ -52,6 +55,24 @@ String paymentErrorText(DomainFailure failure) => switch (failure.code) {
       'dispute_reason_required' ||
       'resolution_note_required' =>
         'Escribe el motivo (máximo 500 caracteres).',
+      // Al verificar o resolver se registran asientos contables
+      // (payments-service `post`, `ledger.ts`, `settlement.ts`).
+      'ledger_already_posted' =>
+        'Este movimiento ya quedó registrado en el libro contable; otra persona pudo procesar el pago. Actualiza el pago antes de continuar.',
+      'unbalanced_ledger' ||
+      'invalid_ledger_line' ||
+      'invalid_amounts' =>
+        'Los montos del pago no cuadran en el libro contable, así que no se registró la acción. Reporta el pago al equipo técnico.',
+      'carrier_unknown' =>
+        'El pedido tiene flete pero no tiene transportista asignado. Asígnalo antes de continuar.',
+      'invalid_payment_method' =>
+        'Ese medio de pago no está disponible. Elige transferencia o Nequi.',
+      'idempotency_content_mismatch' =>
+        'No pudimos registrar el pago con ese identificador. Intenta de nuevo.',
+      // `database.ts`: la base de datos estaba ocupada; no se aplicó nada.
+      'lock_timeout' ||
+      'statement_timeout' =>
+        'TRACOP no está disponible por un momento: está procesando otra operación sobre este pago. Espera un momento e intenta de nuevo.',
       'invalid_response' =>
         'Recibimos una respuesta inesperada del servidor. Intenta de nuevo.',
       _ => switch (failure.statusCode) {

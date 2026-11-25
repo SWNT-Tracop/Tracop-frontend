@@ -7,6 +7,9 @@ abstract interface class PaymentBackofficeRemoteDataSource {
       String settlementId, Map<String, dynamic> body);
   Future<Map<String, dynamic>> ledgerForOrder(String orderId);
   Future<Map<String, dynamic>> metrics();
+
+  /// `GET /backoffice/audit` (solo admin).
+  Future<Map<String, dynamic>> audit(Map<String, dynamic> query);
 }
 
 class PaymentBackofficeRemoteDataSourceImpl
@@ -38,4 +41,8 @@ class PaymentBackofficeRemoteDataSourceImpl
 
   @override
   Future<Map<String, dynamic>> metrics() => _get('/backoffice/metrics');
+
+  @override
+  Future<Map<String, dynamic>> audit(Map<String, dynamic> query) =>
+      _get('/backoffice/audit', query: query);
 }

@@ -8,6 +8,7 @@ import 'package:tracop_mobile/core/result/result.dart';
 import 'package:tracop_mobile/features/payments/data/remote/payment_remote.dart';
 import 'package:tracop_mobile/features/payments/data/repository/payment_repository_impl.dart';
 import 'package:tracop_mobile/features/payments/domain/entities/payment.dart';
+import 'package:tracop_mobile/features/payments/domain/proof_upload_cancellation.dart';
 
 import 'support/payment_fixtures.dart';
 
@@ -201,6 +202,81 @@ void main() {
     });
   });
 
+  group('uploadProof cancellation', () {
+    DioException cancelError() => DioException(
+        requestOptions: RequestOptions(path: 'https://storage.example/bucket'),
+        type: DioExceptionType.cancel);
+
+    test('cancelling during the storage POST returns the cancelled outcome',
+        () async {
+      final cancellation = ProofUploadCancellation();
+      final remote = _FakeRemote()
+        ..onUpload = (token) async {
+          cancellation.cancel();
+          await Future<void>.delayed(Duration.zero);
+          expect(token?.isCancelled, isTrue,
+              reason: 'la cancelación llega al CancelToken de Dio');
+          throw cancelError();
+        };
+      final result = await PaymentRepositoryImpl(remote: remote)
+          .uploadProof(paymentId, _proof, cancellation: cancellation);
+      expect((result as Err<Payment, DomainFailure>).error.code,
+          proofUploadCancelledCode);
+      expect(remote.calls, ['requestProofUpload', 'upload']);
+    });
+
+    test('a cancellation right after the upload skips the confirmation',
+        () async {
+      final cancellation = ProofUploadCancellation();
+      final remote = _FakeRemote()
+        ..onUpload = (_) async => cancellation.cancel();
+      final result = await PaymentRepositoryImpl(remote: remote)
+          .uploadProof(paymentId, _proof, cancellation: cancellation);
+      expect((result as Err<Payment, DomainFailure>).error.code,
+          proofUploadCancelledCode);
+      expect(remote.calls, isNot(contains('confirmProof')));
+    });
+
+    test('retrying after a cancel requests a new policy and succeeds',
+        () async {
+      final cancellation = ProofUploadCancellation();
+      final remote = _FakeRemote()
+        ..onUpload = (_) async {
+          cancellation.cancel();
+          throw cancelError();
+        };
+      final repository = PaymentRepositoryImpl(remote: remote);
+      await repository.uploadProof(paymentId, _proof,
+          cancellation: cancellation);
+      remote
+        ..onUpload = null
+        ..calls.clear();
+      final retry = await repository.uploadProof(paymentId, _proof,
+          cancellation: ProofUploadCancellation());
+      expect(retry, isA<Ok<Payment, DomainFailure>>());
+      expect(remote.calls, ['requestProofUpload', 'upload', 'confirmProof']);
+      expect(remote.uploadedFields, {'key': 'payment-incoming/2'});
+    });
+  });
+
+  test('storage POST honours the cancel token', () async {
+    final remote = PaymentRemoteDataSourceImpl(
+        DioClient(baseUrl: 'https://api.example'),
+        storageClient: () => Dio()..httpClientAdapter = _RecordingAdapter());
+    final token = CancelToken()..cancel();
+    await expectLater(
+      remote.uploadProofObject(
+        url: 'https://storage.example/bucket',
+        fields: const {'key': 'k'},
+        filename: 'comprobante.jpg',
+        bytes: const [0xFF, 0xD8, 0xFF],
+        cancelToken: token,
+      ),
+      throwsA(isA<DioException>()
+          .having((e) => e.type, 'type', DioExceptionType.cancel)),
+    );
+  });
+
   test('storage upload uses a client without Authorization, fields first',
       () async {
     final adapter = _RecordingAdapter();
@@ -243,6 +319,8 @@ class _FakeRemote implements PaymentRemoteDataSource {
   DioException? commandError;
   String byIdStatus = 'pending';
   int _policies = 0;
+  CancelToken? lastCancelToken;
+  Future<void> Function(CancelToken? token)? onUpload;
 
   Map<String, dynamic> _command(String name, Map<String, dynamic> body) {
     calls.add(name);
@@ -291,8 +369,11 @@ class _FakeRemote implements PaymentRemoteDataSource {
     required Map<String, String> fields,
     required String filename,
     required List<int> bytes,
+    CancelToken? cancelToken,
   }) async {
     calls.add('upload');
+    lastCancelToken = cancelToken;
+    if (onUpload != null) await onUpload!(cancelToken);
     uploadedFields = fields;
     if (uploadErrors.isNotEmpty) throw uploadErrors.removeAt(0);
   }

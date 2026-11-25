@@ -72,9 +72,22 @@ class _Waiting extends StatelessWidget {
         const SizedBox(width: 8),
       ],
       Flexible(
-        child: Text(
-            PaymentStrings.waiting(age.isNegative ? Duration.zero : age),
-            style: const TextStyle(color: AppTheme.mutedText)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(PaymentStrings.waiting(age.isNegative ? Duration.zero : age),
+                style: const TextStyle(color: AppTheme.mutedText)),
+            // Fecha absoluta (hora de Bogotá) de la misma marca que usa
+            // "en espera": comprobante enviado o última actualización.
+            Text(
+              PaymentStrings.waitingSinceAt(
+                  AppFormats.bogotaDateTime(payment.waitingSince)),
+              key: Key('waiting-since-${payment.id}'),
+              style: const TextStyle(color: AppTheme.mutedText, fontSize: 12),
+            ),
+          ],
+        ),
       ),
     ]);
   }
@@ -130,8 +143,7 @@ class _WideTable extends StatelessWidget {
                 Text(PaymentStrings.shortId(payment.orderId), style: mono),
                 PaymentMethodBadge(
                     method: payment.method, wire: payment.methodCode),
-                PaymentStatusBadge(
-                    status: payment.status, wire: payment.statusCode),
+                PaymentStatusBadge.of(payment),
                 Text(AppFormats.cop(payment.total), style: mono),
                 _Waiting(payment: payment, table: table),
               ]),
@@ -186,8 +198,7 @@ class _PaymentCard extends StatelessWidget {
                   runSpacing: 8,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    PaymentStatusBadge(
-                        status: payment.status, wire: payment.statusCode),
+                    PaymentStatusBadge.of(payment),
                     PaymentMethodBadge(
                         method: payment.method, wire: payment.methodCode),
                   ],

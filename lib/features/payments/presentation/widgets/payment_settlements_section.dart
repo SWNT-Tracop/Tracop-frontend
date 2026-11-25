@@ -6,9 +6,12 @@ import '../../../../app/theme.dart';
 import '../../../../core/i18n/formats.dart';
 import '../../../../core/i18n/strings.dart';
 import '../../domain/entities/payment.dart';
+import '../../../home/presentation/home_screen.dart';
 import '../../domain/entities/settlement.dart';
+import '../../domain/payment_permissions.dart';
 import '../providers/payment_backoffice_provider.dart';
 import 'mark_settlement_paid_flow.dart';
+import 'payment_audit_section.dart';
 import 'payment_states.dart';
 import 'settlement_badges.dart';
 
@@ -25,6 +28,8 @@ class PaymentSettlementsSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(paymentSettlementsProvider(paymentId));
+    final isAdmin = PaymentPermissions.canViewAudit(
+        ref.watch(homeUserProvider).valueOrNull?.role);
     final textTheme = Theme.of(context).textTheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -55,7 +60,7 @@ class PaymentSettlementsSection extends ConsumerWidget {
               ? _Empty(status: status)
               : Column(children: [
                   for (final settlement in items)
-                    _SettlementTile(settlement: settlement),
+                    _SettlementTile(settlement: settlement, isAdmin: isAdmin),
                 ]),
         ),
       ],
@@ -100,8 +105,11 @@ class _Empty extends StatelessWidget {
 }
 
 class _SettlementTile extends ConsumerWidget {
-  const _SettlementTile({required this.settlement});
+  const _SettlementTile({required this.settlement, required this.isAdmin});
   final Settlement settlement;
+
+  /// Solo administración puede consultar quién la marcó pagada.
+  final bool isAdmin;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => Container(
@@ -144,7 +152,73 @@ class _SettlementTile extends ConsumerWidget {
                   ),
               ],
             ),
+            if (settlement.isPaid) ...[
+              const SizedBox(height: 6),
+              if (isAdmin)
+                SettlementPaidBy(settlementId: settlement.id)
+              else
+                const Text(SettlementStrings.paidByUnavailable,
+                    style: TextStyle(color: AppTheme.mutedText, fontSize: 13)),
+            ],
           ],
         ),
       );
+}
+
+/// Quién marcó pagada la liquidación, desde la auditoría (solo admin). Se
+/// consulta al tocar el botón, para no hacer una petición por liquidación.
+class SettlementPaidBy extends ConsumerStatefulWidget {
+  const SettlementPaidBy({super.key, required this.settlementId});
+  final String settlementId;
+
+  @override
+  ConsumerState<SettlementPaidBy> createState() => _SettlementPaidByState();
+}
+
+class _SettlementPaidByState extends ConsumerState<SettlementPaidBy> {
+  bool _requested = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_requested) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          key: Key('paid-by-${widget.settlementId}'),
+          style: TextButton.styleFrom(padding: EdgeInsets.zero),
+          onPressed: () => setState(() => _requested = true),
+          icon: const Icon(Icons.person_search_outlined, size: 18),
+          label: const Text(SettlementStrings.showPaidBy),
+        ),
+      );
+    }
+    const muted = TextStyle(color: AppTheme.mutedText, fontSize: 13);
+    return ref.watch(settlementPaidByProvider(widget.settlementId)).when(
+          skipLoadingOnReload: true,
+          loading: () => const Padding(
+            padding: EdgeInsets.symmetric(vertical: 4),
+            child: SizedBox.square(
+                dimension: 16,
+                child: CircularProgressIndicator(strokeWidth: 2)),
+          ),
+          error: (_, __) => Row(children: [
+            const Expanded(
+                child: Text(SettlementStrings.paidByError, style: muted)),
+            TextButton(
+              onPressed: () =>
+                  ref.invalidate(settlementPaidByProvider(widget.settlementId)),
+              child: const Text(CommonStrings.retry),
+            ),
+          ]),
+          data: (entry) => Text(
+            entry == null
+                ? SettlementStrings.paidByMissing
+                : SettlementStrings.paidBy(
+                    auditActor(entry).role,
+                    auditActor(entry).shortId,
+                    AppFormats.bogotaDateTime(entry.at)),
+            style: const TextStyle(color: AppTheme.ink, fontSize: 13),
+          ),
+        );
+  }
 }

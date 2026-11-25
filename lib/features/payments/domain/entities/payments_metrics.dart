@@ -9,7 +9,22 @@ class PaymentsMetrics {
     required this.openDisputes,
     required this.settlementsIssued,
     required this.settlementsPaid,
+    this.ordersByStatus = const {},
   });
+
+  /// Estados del pedido que suma `paidOrdersTotalCop` en el backend
+  /// (`ordering/.../drizzle-repositories.ts`, `metrics()`): el total cobrado
+  /// incluye los pedidos pagados y los que siguieron después del pago, no solo
+  /// `paid`. El conteo usa los mismos estados para que monto y cantidad
+  /// describan el mismo conjunto. Ojo: `closed` incluye también pedidos
+  /// cerrados tras un reembolso, igual que el monto del servidor.
+  static const paidOrderStatuses = {
+    'paid',
+    'pickup_scheduled',
+    'in_transit',
+    'delivered',
+    'closed',
+  };
 
   final DateTime generatedAt;
   final int paidOrdersTotalCop;
@@ -20,6 +35,14 @@ class PaymentsMetrics {
   /// Liquidaciones emitidas que aún no se pagan.
   final AmountCount settlementsIssued;
   final AmountCount settlementsPaid;
+
+  /// Pedidos por estado. Claves desconocidas se conservan pero no se usan;
+  /// valores que no son enteros se descartan.
+  final Map<String, int> ordersByStatus;
+
+  /// Pedidos que forman `paidOrdersTotalCop` (ver `paidOrderStatuses`).
+  int get paidOrdersCount => paidOrderStatuses.fold(
+      0, (sum, status) => sum + (ordersByStatus[status] ?? 0));
 
   /// Antigüedad del comprobante más viejo, medida contra `generatedAt` (el
   /// reloj del servidor), no contra el reloj del equipo.
@@ -47,8 +70,20 @@ class PaymentsMetrics {
           Map<String, dynamic>.from(payments['settlementsIssued'] as Map)),
       settlementsPaid: AmountCount.fromJson(
           Map<String, dynamic>.from(payments['settlementsPaid'] as Map)),
+      ordersByStatus: _counts(json['ordersByStatus']),
     );
   }
+}
+
+Map<String, int> _counts(Object? value) {
+  if (value is! Map) return const {};
+  return {
+    for (final entry in value.entries)
+      if (entry.key is String &&
+          entry.value is int &&
+          (entry.value as int) >= 0)
+        entry.key as String: entry.value as int,
+  };
 }
 
 class AmountCount {

@@ -16,6 +16,7 @@ import '../../../ordering/presentation/providers/order_provider.dart';
 import '../../domain/entities/payment.dart';
 import '../../domain/payment_permissions.dart';
 import '../../domain/proof_file_rules.dart';
+import '../../domain/proof_upload_cancellation.dart';
 import '../payment_error_text.dart';
 import '../providers/payment_provider.dart';
 import '../widgets/payment_amount_summary.dart';
@@ -56,6 +57,12 @@ class _BuyerPaymentScreenState extends ConsumerState<BuyerPaymentScreen> {
   ProofFile? _proof;
   bool _uploading = false;
   String? _proofError;
+
+  /// Carga en curso que el comprador puede cancelar.
+  ProofUploadCancellation? _cancellation;
+
+  /// Aviso neutro (no error) tras cancelar la carga.
+  String? _proofNotice;
 
   void _snack(String message) => ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(message)));
@@ -109,7 +116,10 @@ class _BuyerPaymentScreenState extends ConsumerState<BuyerPaymentScreen> {
 
   Future<void> _pick(ImageSource source) async {
     if (_uploading) return;
-    setState(() => _proofError = null);
+    setState(() {
+      _proofError = null;
+      _proofNotice = null;
+    });
     final XFile? file;
     try {
       file = await (widget.picker ?? _defaultPicker)(source);
@@ -145,14 +155,18 @@ class _BuyerPaymentScreenState extends ConsumerState<BuyerPaymentScreen> {
   Future<void> _upload(Payment payment) async {
     final proof = _proof;
     if (proof == null || _uploading) return;
+    final cancellation = ProofUploadCancellation();
     setState(() {
       _uploading = true;
       _proofError = null;
+      _proofNotice = null;
+      _cancellation = cancellation;
     });
     final result = await ref
         .read(paymentRepositoryProvider)
-        .uploadProof(payment.id, proof);
+        .uploadProof(payment.id, proof, cancellation: cancellation);
     if (!mounted) return;
+    _cancellation = null;
     switch (result) {
       case Ok():
         setState(() {
@@ -161,6 +175,13 @@ class _BuyerPaymentScreenState extends ConsumerState<BuyerPaymentScreen> {
         });
         _snack(PaymentStrings.proofUploaded);
         _refreshAll();
+      case Err(error: final failure)
+          when failure.code == proofUploadCancelledCode:
+        // Cancelar no es un error: se conserva la imagen para subirla luego.
+        setState(() {
+          _uploading = false;
+          _proofNotice = PaymentStrings.uploadCancelled;
+        });
       case Err(error: final failure):
         // Se conserva la imagen elegida para reintentar sin volver a buscarla.
         setState(() {
@@ -455,6 +476,22 @@ class _BuyerPaymentScreenState extends ConsumerState<BuyerPaymentScreen> {
             child: Text(_proofError!,
                 style: const TextStyle(color: AppTheme.dangerStrong)),
           ),
+        if (_proofNotice != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Semantics(
+              liveRegion: true,
+              child: Row(children: [
+                const Icon(Icons.info_outline,
+                    size: 18, color: AppTheme.mutedText),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(_proofNotice!,
+                      style: const TextStyle(color: AppTheme.ink)),
+                ),
+              ]),
+            ),
+          ),
         if (proof != null)
           FilledButton.icon(
             onPressed: _uploading ? null : () => _upload(payment),
@@ -470,6 +507,18 @@ class _BuyerPaymentScreenState extends ConsumerState<BuyerPaymentScreen> {
                     ? PaymentStrings.retryUpload
                     : PaymentStrings.uploadProof),
           ),
+        if (_uploading && _cancellation != null) ...[
+          const SizedBox(height: 8),
+          Tooltip(
+            message: PaymentStrings.cancelUploadTooltip,
+            child: OutlinedButton.icon(
+              key: const Key('cancel-proof-upload'),
+              onPressed: () => _cancellation?.cancel(),
+              icon: const Icon(Icons.close),
+              label: const Text(PaymentStrings.cancelUpload),
+            ),
+          ),
+        ],
         const SizedBox(height: 8),
         Wrap(spacing: 12, runSpacing: 8, children: [
           OutlinedButton.icon(
@@ -562,7 +611,11 @@ class _StatusCard extends StatelessWidget {
   const _StatusCard({required this.payment});
   final Payment payment;
 
-  String get _body => switch (payment.status) {
+  String get _body => payment.disputeResolved
+      ? PaymentStrings.statusDisputeResolvedBody
+      : _statusBody;
+
+  String get _statusBody => switch (payment.status) {
         PaymentStatus.pending => PaymentStrings.statusPendingBody,
         PaymentStatus.proofUploaded => PaymentStrings.statusProofUploadedBody,
         PaymentStatus.verified => PaymentStrings.statusVerifiedBody,
@@ -576,7 +629,7 @@ class _StatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = PaymentStatusBadge.styleFor(payment.status);
+    final style = PaymentStatusBadge.styleForPayment(payment);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -593,7 +646,9 @@ class _StatusCard extends StatelessWidget {
             Icon(style.icon, color: style.foreground),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(PaymentStrings.status(payment.statusCode),
+              child: Text(
+                  PaymentStrings.statusLabel(payment.statusCode,
+                      disputeResolved: payment.disputeResolved),
                   style: TextStyle(
                       color: style.foreground,
                       fontSize: 18,

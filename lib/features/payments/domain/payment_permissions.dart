@@ -30,6 +30,9 @@ abstract final class PaymentPermissions {
 
   static bool isStaff(String? role) => staffRoles.contains(role);
 
+  /// "Ver auditoría": solo administración (el API responde 403 al resto).
+  static bool canViewAudit(String? role) => role == 'admin';
+
   static Set<PaymentAction> actionsFor(PaymentStatus status, String? role) {
     if (role == 'buyer') {
       return switch (status) {

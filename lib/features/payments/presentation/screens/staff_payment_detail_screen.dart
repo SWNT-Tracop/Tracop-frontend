@@ -11,6 +11,7 @@ import '../payment_error_text.dart';
 import '../providers/payment_backoffice_provider.dart';
 import '../providers/payment_provider.dart';
 import '../widgets/payment_detail_panel.dart';
+import '../widgets/payment_audit_section.dart';
 import '../widgets/payment_dialogs.dart';
 import '../widgets/payment_states.dart';
 import '../widgets/ledger_section.dart';
@@ -57,6 +58,7 @@ class _StaffPaymentDetailScreenState
     // Verificar o resolver registra asientos y cambia las métricas.
     ref.invalidate(orderLedgerProvider);
     ref.invalidate(paymentsMetricsProvider);
+    ref.invalidate(paymentAuditProvider(widget.paymentId));
     await _reload();
   }
 
@@ -160,6 +162,12 @@ class _StaffPaymentDetailScreenState
               ],
               const SizedBox(height: 32),
               LedgerSection(orderId: payment.orderId),
+              // "Ver auditoría": oculta (no deshabilitada) para quien no es
+              // admin; el API también responde 403.
+              if (PaymentPermissions.canViewAudit(role)) ...[
+                const SizedBox(height: 32),
+                PaymentAuditSection(paymentId: payment.id),
+              ],
             ],
           ),
         ),

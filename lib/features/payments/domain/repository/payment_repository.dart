@@ -1,5 +1,6 @@
 import '../../../../core/result/result.dart';
 import '../entities/payment.dart';
+import '../proof_upload_cancellation.dart';
 
 abstract interface class PaymentRepository {
   /// Pago más reciente del pedido, o `null` si todavía no tiene.
@@ -14,8 +15,13 @@ abstract interface class PaymentRepository {
   });
 
   /// Pide la autorización, sube la imagen al almacenamiento y la confirma.
+  ///
+  /// Con `cancellation` la carga se puede cancelar mientras sube; devuelve
+  /// `Err` con código `proofUploadCancelledCode`. Un nuevo intento pide otra
+  /// autorización, así que reintentar después de cancelar funciona igual.
   Future<Result<Payment, DomainFailure>> uploadProof(
-      String paymentId, ProofFile file);
+      String paymentId, ProofFile file,
+      {ProofUploadCancellation? cancellation});
 
   Future<Result<Payment, DomainFailure>> dispute(
       String paymentId, int expectedVersion, String reason);

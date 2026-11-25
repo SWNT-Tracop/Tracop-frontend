@@ -1,4 +1,5 @@
 import '../../../../core/result/result.dart';
+import '../../domain/entities/audit_entry.dart';
 import '../../domain/entities/ledger.dart';
 import '../../domain/entities/payments_metrics.dart';
 import '../../domain/entities/settlement.dart';
@@ -46,6 +47,26 @@ class PaymentBackofficeRepositoryImpl implements PaymentBackofficeRepository {
   @override
   Future<Result<PaymentsMetrics, DomainFailure>> metrics() =>
       _guard(() async => PaymentsMetrics.fromJson(await remote.metrics()));
+
+  @override
+  Future<Result<AuditPage, DomainFailure>> audit({
+    required String entity,
+    required String entityId,
+    String? action,
+    String? cursor,
+    int limit = 50,
+  }) =>
+      _guard(() async {
+        // `auditQuerySchema` es estricto: solo claves que acepta, sin nulos.
+        final query = <String, dynamic>{
+          'entity': entity,
+          'entityId': entityId,
+          if (action != null) 'action': action,
+          if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+          'limit': limit.clamp(1, 100),
+        };
+        return AuditPage.fromJson(await remote.audit(query));
+      });
 
   static List<T> _items<T>(Map<String, dynamic> json,
           T Function(Map<String, dynamic> json) parse) =>

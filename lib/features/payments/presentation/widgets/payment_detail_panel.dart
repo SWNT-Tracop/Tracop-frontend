@@ -33,8 +33,7 @@ class PaymentDetailPanel extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Wrap(spacing: 12, runSpacing: 8, children: [
-          PaymentStatusBadge(
-              status: payment.status, wire: payment.statusCode, large: true),
+          PaymentStatusBadge.of(payment, large: true),
           PaymentMethodBadge(method: payment.method, wire: payment.methodCode),
         ]),
         const SizedBox(height: 16),

@@ -115,6 +115,18 @@ class Payment {
 
   bool get hasProof => proofUploadedAt != null;
 
+  /// La disputa se liberó a favor del proveedor: el backend vuelve el pago a
+  /// `held` y conserva `disputeReason` (`releaseDispute` en `payment.ts`).
+  /// Solo afecta lo que se muestra; los permisos usan el estado del API.
+  bool get disputeResolved =>
+      status == PaymentStatus.held && disputeReason != null;
+
+  /// La disputa terminó (liberada o ya liquidada después de liberarla). Un
+  /// reembolso no cuenta: su propio estado (`refunded`) la cierra.
+  bool get disputeClosedInFavorOfProvider =>
+      disputeReason != null &&
+      (status == PaymentStatus.held || status == PaymentStatus.settled);
+
   /// Momento desde el que el pago espera revisión del personal.
   DateTime get waitingSince => switch (status) {
         PaymentStatus.proofUploaded => proofUploadedAt ?? updatedAt,
@@ -217,6 +229,7 @@ enum PaymentMilestoneKind {
   rejected,
   held,
   disputed,
+  disputeResolved,
   current,
 }
 
@@ -239,6 +252,10 @@ List<PaymentMilestone> paymentMilestones(Payment payment) {
     // El API guarda el motivo de la disputa pero no su fecha.
     if (payment.disputeReason != null)
       const PaymentMilestone(kind: PaymentMilestoneKind.disputed, at: null),
+    // Liberada: el pago volvió a `held`. Tampoco hay fecha de la resolución.
+    if (payment.disputeClosedInFavorOfProvider)
+      const PaymentMilestone(
+          kind: PaymentMilestoneKind.disputeResolved, at: null),
     PaymentMilestone(kind: PaymentMilestoneKind.current, at: payment.updatedAt),
   ];
   return items;

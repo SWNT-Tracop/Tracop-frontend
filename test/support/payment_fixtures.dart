@@ -1,8 +1,10 @@
 import 'package:tracop_mobile/core/result/result.dart';
+import 'package:tracop_mobile/features/payments/domain/entities/audit_entry.dart';
 import 'package:tracop_mobile/features/payments/domain/entities/payment.dart';
 import 'package:tracop_mobile/features/payments/domain/entities/ledger.dart';
 import 'package:tracop_mobile/features/payments/domain/entities/payments_metrics.dart';
 import 'package:tracop_mobile/features/payments/domain/entities/settlement.dart';
+import 'package:tracop_mobile/features/payments/domain/proof_upload_cancellation.dart';
 import 'package:tracop_mobile/features/payments/domain/repository/payment_backoffice_repository.dart';
 import 'package:tracop_mobile/features/payments/domain/repository/payment_repository.dart';
 
@@ -99,10 +101,14 @@ class FakePaymentRepository implements PaymentRepository {
         statusCode: 503, code: 'network_error', message: 'sin red'));
   }
 
+  ProofUploadCancellation? lastCancellation;
+
   @override
   Future<Result<Payment, DomainFailure>> uploadProof(
-      String paymentId, ProofFile file) {
+      String paymentId, ProofFile file,
+      {ProofUploadCancellation? cancellation}) {
     uploadCalls++;
+    lastCancellation = cancellation;
     return onUpload?.call() ?? Future.value(Ok(forOrder!));
   }
 
@@ -301,4 +307,51 @@ class FakePaymentBackofficeRepository implements PaymentBackofficeRepository {
     metricsCalls++;
     return Ok(metricsValue ?? PaymentsMetrics.fromJson(metricsJson()));
   }
+
+  /// Páginas de auditoría por cursor (`null` = primera página).
+  Map<String?, AuditPage> auditPages = const {};
+  final auditCalls = <Map<String, Object?>>[];
+
+  @override
+  Future<Result<AuditPage, DomainFailure>> audit({
+    required String entity,
+    required String entityId,
+    String? action,
+    String? cursor,
+    int limit = 50,
+  }) async {
+    auditCalls.add({
+      'entity': entity,
+      'entityId': entityId,
+      'action': action,
+      'cursor': cursor,
+      'limit': limit,
+    });
+    return Ok(auditPages[cursor] ?? const AuditPage(items: []));
+  }
 }
+
+const auditActorIdFixture = '9a1e47a2-8b45-7cc2-9a1e-1234567890ff';
+
+Map<String, dynamic> auditEntryJson({
+  String id = '018f47a2-8b45-7cc2-9a1e-1234567890e1',
+  String? actorId = auditActorIdFixture,
+  String actorRole = 'finance',
+  String action = 'payment.verify',
+  String entity = 'payment',
+  String entityId = paymentId,
+  Object? before = const {'status': 'proof_uploaded'},
+  Object? after = const {'status': 'verified'},
+  String at = '2026-11-24T16:00:00.000Z',
+}) =>
+    {
+      'id': id,
+      'actorId': actorId,
+      'actorRole': actorRole,
+      'action': action,
+      'entity': entity,
+      'entityId': entityId,
+      'before': before,
+      'after': after,
+      'at': at,
+    };

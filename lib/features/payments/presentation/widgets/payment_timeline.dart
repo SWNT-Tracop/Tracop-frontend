@@ -19,8 +19,11 @@ class PaymentTimeline extends StatelessWidget {
         PaymentMilestoneKind.rejected => PaymentStrings.milestoneRejected,
         PaymentMilestoneKind.held => PaymentStrings.milestoneHeld,
         PaymentMilestoneKind.disputed => PaymentStrings.milestoneDisputed,
+        PaymentMilestoneKind.disputeResolved =>
+          PaymentStrings.milestoneDisputeResolved,
         PaymentMilestoneKind.current => PaymentStrings.milestoneCurrent(
-            PaymentStrings.status(payment.statusCode)),
+            PaymentStrings.statusLabel(payment.statusCode,
+                disputeResolved: payment.disputeResolved)),
       };
 
   @override

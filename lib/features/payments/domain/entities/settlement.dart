@@ -46,7 +46,9 @@ enum BeneficiaryKind {
 /// Liquidación de un pago a un beneficiario (`settlementResponseSchema`).
 ///
 /// El API no expone quién la marcó como pagada (`paidBy` vive solo en el
-/// servidor y en la auditoría); la app muestra `reference` y `paidAt`.
+/// servidor y en la auditoría); la app muestra `reference` y `paidAt`, y a
+/// administración le consulta el actor en la auditoría
+/// (`settlementPaidByProvider`).
 class Settlement {
   const Settlement({
     required this.id,
