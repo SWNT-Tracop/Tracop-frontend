@@ -41,6 +41,7 @@ class LogisticsRepository {
       final applied = switch (entity) {
         'trip' => await _applyRemoteTrip(userId, change, payload),
         'checkin' => await _applyRemoteCheckin(userId, payload),
+        'incident' => await _applyRemoteIncident(userId, change, payload),
         _ => true,
       };
       if (!applied) remaining.add(change);
@@ -274,26 +275,27 @@ class LogisticsRepository {
     required String type,
     required String description,
   }) async {
-    final localTrips = await _readCache('logistics:$userId:local-trips') ?? [];
-    if (localTrips.any((trip) => trip['id'] == tripId)) {
-      final key = 'logistics:$userId:local-incidents';
-      final incidents = await _readCache(key) ?? [];
-      incidents.add({
-        'tripId': tripId,
-        'orderId': orderId,
-        'type': type,
-        'description': description,
-        'createdAt': DateTime.now().toUtc().toIso8601String(),
-      });
-      await _saveCache(key, incidents);
-      return;
-    }
+    final incidentId = _uuid.v7();
+    final key = 'logistics:$userId:local-incidents';
+    final incidents = await _readCache(key) ?? [];
+    incidents.add({
+      'id': incidentId,
+      'tripId': tripId,
+      'orderId': orderId,
+      'type': type,
+      'description': description,
+      'status': 'open',
+      'openedAt': DateTime.now().toUtc().toIso8601String(),
+      'closedAt': null,
+    });
+    await _saveCache(key, incidents);
     await _enqueue(
       ownerUserId: userId,
       entity: 'incident',
-      entityId: _uuid.v7(),
+      entityId: incidentId,
       type: 'create',
       payload: {
+        'id': incidentId,
         'tripId': tripId,
         'orderId': orderId,
         'type': type,
@@ -301,6 +303,27 @@ class LogisticsRepository {
       },
     );
     await syncPending(userId);
+  }
+
+  Future<bool> _applyRemoteIncident(String userId, Map<String, dynamic> change,
+      Map<String, dynamic> payload) async {
+    final id = change['entityId'] as String?;
+    if (id == null) return true;
+    final key = 'logistics:$userId:local-incidents';
+    final incidents = await _readCache(key) ?? [];
+    final value = <String, dynamic>{
+      ...payload,
+      'id': id,
+      'isLocalOnly': false,
+    };
+    final index = incidents.indexWhere((item) => item['id'] == id);
+    if (index >= 0) {
+      incidents[index] = {...incidents[index], ...value};
+    } else {
+      incidents.add(value);
+    }
+    await _saveCache(key, incidents);
+    return true;
   }
 
   Future<int> pendingCount(String userId) async => (await (database
