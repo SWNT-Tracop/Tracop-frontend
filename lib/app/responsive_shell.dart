@@ -241,6 +241,12 @@ class ResponsiveShell extends ConsumerWidget {
             title: const Text('Parámetros'),
             onTap: () => Navigator.pop(sheetContext, '/backoffice/parametros'),
           ),
+          if (role == 'operator' || role == 'admin')
+            ListTile(
+              leading: const Icon(Icons.insights_outlined),
+              title: const Text('Precios'),
+              onTap: () => Navigator.pop(sheetContext, '/backoffice/precios'),
+            ),
           if (role == 'admin')
             ListTile(
               leading: const Icon(Icons.history_outlined),
@@ -385,6 +391,12 @@ class ResponsiveShell extends ConsumerWidget {
                     onPressed: () => _showStaffMenu(context, role),
                     icon: const Icon(Icons.more_horiz),
                   ),
+                if (role == 'buyer')
+                  IconButton(
+                    tooltip: 'Recomendaciones y precios',
+                    onPressed: () => _guardedGo(context, '/recomendaciones'),
+                    icon: const Icon(Icons.auto_awesome_outlined),
+                  ),
                 Tooltip(
                   message: NavStrings.profileTooltip(displayName),
                   child: InkWell(
@@ -496,6 +508,12 @@ class ResponsiveShell extends ConsumerWidget {
                       tooltip: 'Más herramientas',
                       onPressed: () => _showStaffMenu(context, role),
                       icon: const Icon(Icons.more_horiz),
+                    ),
+                  if (role == 'buyer')
+                    IconButton(
+                      tooltip: 'Recomendaciones y precios',
+                      onPressed: () => _guardedGo(context, '/recomendaciones'),
+                      icon: const Icon(Icons.auto_awesome_outlined),
                     ),
                   const SizedBox(width: 10),
                   Flexible(

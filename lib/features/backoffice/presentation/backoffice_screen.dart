@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -135,6 +137,11 @@ class _DashboardView extends ConsumerWidget {
 Map<String, dynamic> _map(Object? value) =>
     value is Map ? Map<String, dynamic>.from(value) : {};
 
+void _popDialog<T>(BuildContext context, [T? result]) {
+  final navigator = Navigator.of(context, rootNavigator: true);
+  if (navigator.canPop()) navigator.pop(result);
+}
+
 class _MetricGrid extends StatelessWidget {
   const _MetricGrid({required this.items});
   final List<(String, Object?, IconData)> items;
@@ -245,11 +252,11 @@ class _VerificationTile extends ConsumerWidget {
                   decoration: const InputDecoration(labelText: 'Motivo')),
               actions: [
                 TextButton(
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () => _popDialog(context),
                     child: const Text('Cancelar')),
                 ElevatedButton(
                     onPressed: () =>
-                        Navigator.pop(context, controller.text.trim()),
+                        _popDialog(context, controller.text.trim()),
                     child: const Text('Confirmar'))
               ],
             ));
@@ -308,7 +315,7 @@ class _VerificationTile extends ConsumerWidget {
                               .read(backofficeRepositoryProvider)
                               .remote
                               .hideRating(ratingId);
-                          if (context.mounted) Navigator.pop(context);
+                          if (context.mounted) _popDialog(context);
                         },
                       ),
               ),
@@ -316,7 +323,7 @@ class _VerificationTile extends ConsumerWidget {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => _popDialog(context),
               child: const Text('Cerrar')),
         ],
       ),
@@ -331,10 +338,10 @@ Future<bool> _confirm(
         builder: (_) =>
             AlertDialog(title: Text(title), content: Text(message), actions: [
               TextButton(
-                  onPressed: () => Navigator.pop(context, false),
+                  onPressed: () => _popDialog(context, false),
                   child: const Text('Cancelar')),
               ElevatedButton(
-                  onPressed: () => Navigator.pop(context, true),
+                  onPressed: () => _popDialog(context, true),
                   child: const Text('Confirmar'))
             ])) ??
     false;
@@ -433,14 +440,17 @@ class _CategoriesPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final role = ref.watch(authProvider).valueOrNull?.user.role;
+    final canManage = _canManageCatalog(role);
     final state = ref.watch(backofficeCategoriesProvider);
     return _AsyncBody(
       state: state,
       builder: (value) => Column(children: [
+        if (!canManage) const _ReadOnlyCard(),
         Align(
           alignment: Alignment.centerRight,
           child: FilledButton.icon(
-            onPressed: () => _createCategory(context, ref),
+            onPressed: canManage ? () => _createCategory(context, ref) : null,
             icon: const Icon(Icons.add),
             label: const Text('Nueva categoría'),
           ),
@@ -449,6 +459,7 @@ class _CategoriesPanel extends ConsumerWidget {
           _CategoryTile(
             item: _map(raw),
             onChanged: () => ref.invalidate(backofficeCategoriesProvider),
+            canManage: canManage,
           ),
         if (value.isEmpty)
           const _EmptyCard(message: 'No hay categorías activas.'),
@@ -458,9 +469,11 @@ class _CategoriesPanel extends ConsumerWidget {
 }
 
 class _CategoryTile extends ConsumerWidget {
-  const _CategoryTile({required this.item, required this.onChanged});
+  const _CategoryTile(
+      {required this.item, required this.onChanged, required this.canManage});
   final Map<String, dynamic> item;
   final VoidCallback onChanged;
+  final bool canManage;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => Card(
@@ -470,62 +483,263 @@ class _CategoryTile extends ConsumerWidget {
           trailing: IconButton(
             tooltip: 'Editar',
             icon: const Icon(Icons.edit_outlined),
-            onPressed: () async {
-              final name = await _textValue(
-                  context, 'Editar categoría', item['name']?.toString() ?? '');
-              if (name == null) return;
-              await ref
-                  .read(backofficeRepositoryProvider)
-                  .remote
-                  .updateCategory(item['id'].toString(), name);
-              onChanged();
-            },
+            onPressed: !canManage
+                ? null
+                : () async {
+                    final name = await _textValue(context, 'Editar categoría',
+                        item['name']?.toString() ?? '');
+                    if (name == null) return;
+                    if (!context.mounted ||
+                        !await _confirm(context, 'Confirmar edición',
+                            'Se actualizará esta categoría.')) {
+                      return;
+                    }
+                    final result =
+                        await ref.read(backofficeRepositoryProvider).guard(
+                              () => ref
+                                  .read(backofficeRepositoryProvider)
+                                  .remote
+                                  .updateCategory(item['id'].toString(), name),
+                            );
+                    if (!context.mounted) return;
+                    result.map(
+                      ok: (_) {
+                        onChanged();
+                        _showBackofficeMessage(
+                            context, 'Categoría actualizada.');
+                      },
+                      err: (failure) => _showBackofficeMessage(
+                          context, failure.error.message),
+                    );
+                  },
           ),
         ),
       );
 }
 
 Future<void> _createCategory(BuildContext context, WidgetRef ref) async {
-  final name = await _textValue(context, 'Nueva categoría', '');
-  if (name == null) return;
-  await ref.read(backofficeRepositoryProvider).remote.createCategory({
-    'id': const Uuid().v7(),
-    'name': name,
-    'parentId': null,
-  });
-  ref.invalidate(backofficeCategoriesProvider);
+  try {
+    final draft = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _CategoryFormDialog(
+        categories: ref.read(backofficeCategoriesProvider.future),
+      ),
+    );
+    if (draft == null || !context.mounted) return;
+    final result = await ref.read(backofficeRepositoryProvider).guard(
+          () => ref.read(backofficeRepositoryProvider).remote.createCategory({
+            'id': const Uuid().v7(),
+            ...draft,
+          }),
+        );
+    if (!context.mounted) return;
+    result.map(
+      ok: (_) {
+        ref.invalidate(backofficeCategoriesProvider);
+        _showBackofficeMessage(context, 'Categoría creada correctamente.');
+      },
+      err: (failure) => _showBackofficeMessage(context, failure.error.message),
+    );
+  } catch (_) {
+    if (context.mounted) {
+      _showBackofficeMessage(context, 'No se pudo crear la categoría.');
+    }
+  }
 }
 
-class _ProductsPanel extends ConsumerWidget {
+bool _canManageCatalog(String? role) => role == 'operator' || role == 'admin';
+
+class _ReadOnlyCard extends StatelessWidget {
+  const _ReadOnlyCard();
+
+  @override
+  Widget build(BuildContext context) => const Card(
+        child: ListTile(
+          leading: Icon(Icons.lock_outline),
+          title: Text('Vista de solo lectura'),
+          subtitle: Text('Tu rol no puede modificar el catálogo.'),
+        ),
+      );
+}
+
+class _CategoryFormDialog extends StatefulWidget {
+  const _CategoryFormDialog({required this.categories});
+
+  final Future<List<dynamic>> categories;
+
+  @override
+  State<_CategoryFormDialog> createState() => _CategoryFormDialogState();
+}
+
+class _CategoryFormDialogState extends State<_CategoryFormDialog> {
+  final nameController = TextEditingController();
+  String? parentId;
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Nueva categoría'),
+        content: SizedBox(
+          width: 420,
+          child: FutureBuilder<List<dynamic>>(
+            future: widget.categories,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const SizedBox(
+                    height: 100,
+                    child: Center(child: CircularProgressIndicator()));
+              }
+              if (snapshot.hasError) {
+                return const Text('No se pudieron cargar las categorías.');
+              }
+              final parents = (snapshot.data ?? const <dynamic>[])
+                  .map(_map)
+                  .where((item) => (item['id']?.toString() ?? '').isNotEmpty)
+                  .where((item) => (item['depth'] as num?)?.toInt() != 3)
+                  .toList();
+              return Column(mainAxisSize: MainAxisSize.min, children: [
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  maxLength: 100,
+                  decoration: const InputDecoration(labelText: 'Nombre'),
+                ),
+                DropdownButtonFormField<String>(
+                  initialValue: parentId,
+                  decoration:
+                      const InputDecoration(labelText: 'Categoría padre'),
+                  items: [
+                    const DropdownMenuItem<String>(
+                        value: null, child: Text('Sin categoría padre')),
+                    for (final item in parents)
+                      DropdownMenuItem(
+                        value: item['id'].toString(),
+                        child: Text(item['name']?.toString() ?? 'Sin nombre'),
+                      ),
+                  ],
+                  onChanged: (value) => setState(() => parentId = value),
+                ),
+              ]);
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => _popDialog(context),
+              child: const Text('Cancelar')),
+          FilledButton(
+            onPressed: () {
+              final name = nameController.text.trim();
+              if (name.isEmpty) return;
+              _popDialog(context, {'name': name, 'parentId': parentId});
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      );
+}
+
+class _ProductsPanel extends ConsumerStatefulWidget {
   const _ProductsPanel();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => _AsyncBody(
-        state: ref.watch(backofficeProductsProvider),
-        builder: (value) => Column(children: [
+  ConsumerState<_ProductsPanel> createState() => _ProductsPanelState();
+}
+
+class _ProductsPanelState extends ConsumerState<_ProductsPanel> {
+  final searchController = TextEditingController();
+  String? categoryFilter;
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canManage =
+        _canManageCatalog(ref.watch(authProvider).valueOrNull?.user.role);
+    final categories = ref.watch(backofficeCategoriesProvider).valueOrNull ??
+        const <dynamic>[];
+    return _AsyncBody(
+      state: ref.watch(backofficeProductsProvider),
+      builder: (value) {
+        final query = searchController.text.trim().toLowerCase();
+        final filtered = (value as List).map(_map).where((item) {
+          final matchesQuery = query.isEmpty ||
+              item['name']?.toString().toLowerCase().contains(query) == true;
+          final matchesCategory = categoryFilter == null ||
+              item['categoryId']?.toString() == categoryFilter;
+          return matchesQuery && matchesCategory;
+        }).toList();
+        return Column(children: [
+          if (!canManage) const _ReadOnlyCard(),
+          TextField(
+            controller: searchController,
+            decoration: const InputDecoration(
+              labelText: 'Buscar productos',
+              prefixIcon: Icon(Icons.search),
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            initialValue: categoryFilter,
+            decoration:
+                const InputDecoration(labelText: 'Filtrar por categoría'),
+            items: [
+              const DropdownMenuItem<String>(
+                  value: null, child: Text('Todas las categorías')),
+              for (final raw in categories)
+                if ((_map(raw)['id']?.toString() ?? '').isNotEmpty)
+                  DropdownMenuItem(
+                    value: _map(raw)['id'].toString(),
+                    child: Text(_map(raw)['name']?.toString() ?? 'Sin nombre'),
+                  ),
+            ],
+            onChanged: (value) => setState(() => categoryFilter = value),
+          ),
+          const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerRight,
             child: FilledButton.icon(
-              onPressed: () => _createProduct(context, ref),
+              onPressed: canManage ? () => _createProduct(context, ref) : null,
               icon: const Icon(Icons.add),
               label: const Text('Nuevo producto'),
             ),
           ),
-          for (final raw in value as List)
+          for (final item in filtered)
             _ProductTile(
-              item: _map(raw),
+              item: item,
               onChanged: () => ref.invalidate(backofficeProductsProvider),
+              canManage: canManage,
+              categories: ref.read(backofficeCategoriesProvider.future),
             ),
-          if (value.isEmpty)
+          if (filtered.isEmpty)
             const _EmptyCard(message: 'No hay productos en el catálogo.'),
-        ]),
-      );
+        ]);
+      },
+    );
+  }
 }
 
 class _ProductTile extends ConsumerWidget {
-  const _ProductTile({required this.item, required this.onChanged});
+  const _ProductTile({
+    required this.item,
+    required this.onChanged,
+    required this.canManage,
+    required this.categories,
+  });
   final Map<String, dynamic> item;
   final VoidCallback onChanged;
+  final bool canManage;
+  final Future<List<dynamic>> categories;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => Card(
@@ -535,41 +749,266 @@ class _ProductTile extends ConsumerWidget {
           trailing: IconButton(
             tooltip: 'Editar',
             icon: const Icon(Icons.edit_outlined),
-            onPressed: () async {
-              final name = await _textValue(
-                  context, 'Editar producto', item['name']?.toString() ?? '');
-              if (name == null) return;
-              await ref
-                  .read(backofficeRepositoryProvider)
-                  .remote
-                  .updateProduct(item['id'].toString(), {
-                'categoryId': item['categoryId'],
-                'name': name,
-                'unit': item['unit'],
-                'attributes': item['attributes'] ?? {},
-              });
-              onChanged();
-            },
+            onPressed: !canManage
+                ? null
+                : () async {
+                    final draft = await showDialog<Map<String, dynamic>>(
+                      context: context,
+                      builder: (_) => _ProductFormDialog(
+                        categories: categories,
+                        initialName: item['name']?.toString() ?? '',
+                        initialCategoryId: item['categoryId']?.toString(),
+                        initialUnit: item['unit']?.toString() ?? 'kg',
+                        initialAttributes: item['attributes'],
+                        title: 'Editar producto',
+                      ),
+                    );
+                    if (draft == null) return;
+                    if (!context.mounted ||
+                        !await _confirm(context, 'Confirmar edición',
+                            'Se actualizará este producto.')) {
+                      return;
+                    }
+                    final result =
+                        await ref.read(backofficeRepositoryProvider).guard(
+                              () => ref
+                                  .read(backofficeRepositoryProvider)
+                                  .remote
+                                  .updateProduct(item['id'].toString(), draft),
+                            );
+                    if (!context.mounted) return;
+                    result.map(
+                      ok: (_) {
+                        onChanged();
+                        _showBackofficeMessage(
+                            context, 'Producto actualizado.');
+                      },
+                      err: (failure) => _showBackofficeMessage(
+                          context, failure.error.message),
+                    );
+                  },
           ),
         ),
       );
 }
 
 Future<void> _createProduct(BuildContext context, WidgetRef ref) async {
-  final name = await _textValue(context, 'Nuevo producto', '');
-  if (name == null) return;
-  final categories = await ref.read(backofficeCategoriesProvider.future);
-  if (categories.isEmpty || !context.mounted) return;
-  final categoryId = _map(categories.first)['id']?.toString();
-  if (categoryId == null) return;
-  await ref.read(backofficeRepositoryProvider).remote.createProduct({
-    'id': const Uuid().v7(),
-    'categoryId': categoryId,
-    'name': name,
-    'unit': 'kg',
-    'attributes': <String, dynamic>{},
+  try {
+    final draft = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _ProductFormDialog(
+        categories: ref.read(backofficeCategoriesProvider.future),
+      ),
+    );
+    if (draft == null || !context.mounted) return;
+
+    final result = await ref.read(backofficeRepositoryProvider).guard(
+          () => ref.read(backofficeRepositoryProvider).remote.createProduct({
+            'id': const Uuid().v7(),
+            ...draft,
+          }),
+        );
+    if (!context.mounted) return;
+    result.map(
+      ok: (_) {
+        ref.invalidate(backofficeProductsProvider);
+        _showBackofficeMessage(context, 'Producto creado correctamente.');
+      },
+      err: (failure) => _showBackofficeMessage(context, failure.error.message),
+    );
+  } catch (_) {
+    if (context.mounted) {
+      _showBackofficeMessage(context,
+          'No se pudo abrir o guardar el producto. Revisa la conexión.');
+    }
+  }
+}
+
+class _ProductFormDialog extends StatefulWidget {
+  const _ProductFormDialog({
+    required this.categories,
+    this.title = 'Nuevo producto',
+    this.initialName = '',
+    this.initialCategoryId,
+    this.initialUnit = 'kg',
+    this.initialAttributes,
   });
-  ref.invalidate(backofficeProductsProvider);
+
+  final Future<List<dynamic>> categories;
+  final String title;
+  final String initialName;
+  final String? initialCategoryId;
+  final String initialUnit;
+  final Object? initialAttributes;
+
+  @override
+  State<_ProductFormDialog> createState() => _ProductFormDialogState();
+}
+
+class _ProductFormDialogState extends State<_ProductFormDialog> {
+  final nameController = TextEditingController();
+  late final TextEditingController attributesController;
+  String? categoryId;
+  String unit = 'kg';
+  String? validationError;
+
+  static const units = [
+    'kg',
+    'g',
+    'lb',
+    'und',
+    'docena',
+    'arroba',
+    'quintal',
+    'caja',
+    'mano',
+    'bulto',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    nameController.text = widget.initialName;
+    categoryId = widget.initialCategoryId;
+    unit = units.contains(widget.initialUnit) ? widget.initialUnit : 'kg';
+    final attributes = widget.initialAttributes is Map
+        ? Map<String, dynamic>.from(widget.initialAttributes as Map)
+        : <String, dynamic>{};
+    attributesController = TextEditingController(
+        text: const JsonEncoder.withIndent('  ').convert(attributes));
+  }
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    attributesController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text(widget.title),
+        content: SizedBox(
+          width: 420,
+          child: FutureBuilder<List<dynamic>>(
+            future: widget.categories,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const SizedBox(
+                  height: 120,
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              if (snapshot.hasError) {
+                return const Text(
+                    'No se pudieron cargar las categorías. Cierra e inténtalo de nuevo.');
+              }
+              final categories = snapshot.data ?? const <dynamic>[];
+              final validCategories = categories
+                  .map(_map)
+                  .where((item) => (item['id']?.toString() ?? '').isNotEmpty)
+                  .toList();
+              if (validCategories.isEmpty) {
+                return const Text(
+                    'Primero crea una categoría para poder registrar el producto.');
+              }
+              if (!validCategories
+                  .any((item) => item['id'].toString() == categoryId)) {
+                categoryId = validCategories.first['id'].toString();
+              }
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    autofocus: true,
+                    maxLength: 120,
+                    decoration: const InputDecoration(labelText: 'Nombre'),
+                  ),
+                  DropdownButtonFormField<String>(
+                    initialValue: categoryId,
+                    decoration: const InputDecoration(labelText: 'Categoría'),
+                    items: [
+                      for (final item in validCategories)
+                        DropdownMenuItem(
+                          value: item['id'].toString(),
+                          child: Text(item['name']?.toString() ?? 'Sin nombre'),
+                        ),
+                    ],
+                    onChanged: (value) => setState(() => categoryId = value),
+                  ),
+                  DropdownButtonFormField<String>(
+                    initialValue: unit,
+                    decoration: const InputDecoration(labelText: 'Unidad'),
+                    items: [
+                      for (final value in units)
+                        DropdownMenuItem(value: value, child: Text(value)),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setState(() => unit = value);
+                    },
+                  ),
+                  TextField(
+                    controller: attributesController,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Atributos (JSON)',
+                      hintText: '{"color":"rojo"}',
+                    ),
+                  ),
+                  if (validationError != null)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(validationError!,
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.error)),
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => _popDialog(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final name = nameController.text.trim();
+              if (name.isEmpty || categoryId == null) {
+                setState(() => validationError =
+                    'Completa el nombre y selecciona una categoría.');
+                return;
+              }
+              final rawAttributes = attributesController.text.trim();
+              dynamic attributes;
+              try {
+                attributes =
+                    jsonDecode(rawAttributes.isEmpty ? '{}' : rawAttributes);
+                if (attributes is! Map) throw const FormatException();
+              } on FormatException {
+                setState(() => validationError =
+                    'Los atributos deben ser un objeto JSON válido.');
+                return;
+              }
+              _popDialog(context, {
+                'categoryId': categoryId,
+                'name': name,
+                'unit': unit,
+                'attributes': Map<String, dynamic>.from(attributes),
+              });
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      );
+}
+
+void _showBackofficeMessage(BuildContext context, String message) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message)));
 }
 
 Future<String?> _textValue(
@@ -582,12 +1021,12 @@ Future<String?> _textValue(
       content: TextField(controller: controller, autofocus: true),
       actions: [
         TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => _popDialog(context),
             child: const Text('Cancelar')),
         FilledButton(
             onPressed: () {
               final value = controller.text.trim();
-              Navigator.pop(context, value.isEmpty ? null : value);
+              _popDialog(context, value.isEmpty ? null : value);
             },
             child: const Text('Guardar')),
       ],
@@ -604,7 +1043,7 @@ Future<String?> _textReason(BuildContext context) async {
               content: TextField(controller: c, maxLength: 300),
               actions: [
                 TextButton(
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () => _popDialog(context),
                     child: const Text('Cancelar')),
                 ElevatedButton(
                     onPressed: () => Navigator.pop(
@@ -687,6 +1126,7 @@ class _TripTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListTile(
+        onTap: () => _showDetail(context),
         title: Text(item['id']?.toString() ?? 'Viaje'),
         subtitle:
             Text('${item['status'] ?? ''} · versión ${item['version'] ?? '-'}'),
@@ -703,6 +1143,16 @@ class _TripTile extends StatelessWidget {
           ),
         ]),
       );
+
+  Future<void> _showDetail(BuildContext context) async {
+    final id = item['id']?.toString();
+    if (id == null) return;
+    final remote = _backofficeRemote(context);
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _TripDetailDialog(tripId: id, remote: remote),
+    );
+  }
 
   Future<void> _reassign(BuildContext context) async {
     if (carriers.isEmpty) return;
@@ -732,6 +1182,91 @@ class _TripTile extends StatelessWidget {
       ProviderScope.containerOf(context)
           .read(backofficeRepositoryProvider)
           .remote;
+}
+
+class _TripDetailDialog extends StatefulWidget {
+  const _TripDetailDialog({required this.tripId, required this.remote});
+  final String tripId;
+  final BackofficeRemoteDataSource remote;
+
+  @override
+  State<_TripDetailDialog> createState() => _TripDetailDialogState();
+}
+
+class _TripDetailDialogState extends State<_TripDetailDialog> {
+  late final Future<List<Object>> data = Future.wait<Object>([
+    widget.remote.trip(widget.tripId),
+    widget.remote.tripStops(widget.tripId),
+  ]);
+  bool showLocations = false;
+  Future<Map<String, dynamic>>? locations;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Detalle del viaje'),
+        content: SizedBox(
+          width: 560,
+          child: FutureBuilder<List<Object>>(
+            future: data,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const SizedBox(
+                    height: 120,
+                    child: Center(child: CircularProgressIndicator()));
+              }
+              if (snapshot.hasError) {
+                return const Text('No se pudo cargar el detalle del viaje.');
+              }
+              final trip = _map(snapshot.data![0]);
+              final stops = snapshot.data![1] as List;
+              return ListView(shrinkWrap: true, children: [
+                Text('Estado: ${trip['status'] ?? '-'}'),
+                Text('Versión: ${trip['version'] ?? '-'}'),
+                const Divider(),
+                for (final raw in stops)
+                  ListTile(
+                    dense: true,
+                    title: Text(
+                        '${_map(raw)['kind'] ?? 'Parada'} · ${_map(raw)['zone'] ?? ''}'),
+                    subtitle: Text('Pedido: ${_map(raw)['orderId'] ?? '-'}'),
+                  ),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      showLocations = true;
+                      locations ??= widget.remote.locationPack(widget.tripId);
+                    });
+                  },
+                  icon: const Icon(Icons.location_on_outlined),
+                  label: const Text('Ver ubicaciones temporales'),
+                ),
+                if (showLocations && locations != null)
+                  FutureBuilder<Map<String, dynamic>>(
+                    future: locations,
+                    builder: (context, locationSnapshot) {
+                      if (locationSnapshot.connectionState !=
+                          ConnectionState.done) {
+                        return const LinearProgressIndicator();
+                      }
+                      if (locationSnapshot.hasError) {
+                        return const Text(
+                            'La ubicación no está disponible o ya expiró.');
+                      }
+                      final pack = locationSnapshot.data!;
+                      return Text(
+                          'Vigencia: ${pack['expiresAt'] ?? '-'}\n${pack['stops'] ?? []}');
+                    },
+                  ),
+              ]);
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => _popDialog(context),
+              child: const Text('Cerrar')),
+        ],
+      );
 }
 
 class _IncidentsPanel extends StatelessWidget {
@@ -815,10 +1350,10 @@ class _ParameterTile extends ConsumerWidget {
                     controller: c, keyboardType: TextInputType.number),
                 actions: [
                   TextButton(
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: () => _popDialog(context),
                       child: const Text('Cancelar')),
                   ElevatedButton(
-                      onPressed: () => Navigator.pop(context, c.text.trim()),
+                      onPressed: () => _popDialog(context, c.text.trim()),
                       child: const Text('Guardar'))
                 ]));
     if (value == null || value.isEmpty || !context.mounted) return;
