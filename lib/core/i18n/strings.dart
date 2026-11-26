@@ -167,6 +167,9 @@ abstract final class LogisticsStrings {
   static const complete = 'Completar';
   static const vehicleData = 'Datos del vehículo';
   static const vehicleType = 'Tipo de vehículo';
+
+  /// PROVISIONAL: vocabulario de vehículos del piloto (§23).
+  static const vehicleTypes = ['Moto', 'Carro', 'Camioneta', 'Camión', 'Otro'];
   static const vehicleCapacity = 'Capacidad (kg)';
   static const plate = 'Placa';
   static const profileSaved = 'Perfil guardado para sincronizar.';

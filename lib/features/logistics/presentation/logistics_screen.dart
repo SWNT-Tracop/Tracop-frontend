@@ -245,7 +245,11 @@ class _CarrierProfileCard extends ConsumerWidget {
 
   Future<void> _editProfile(
       BuildContext context, WidgetRef ref, CarrierProfile? current) async {
-    final vehicle = TextEditingController(text: current?.vehicleType ?? '');
+    // PROVISIONAL list (§23): a free text let people save things like "Aa", which the
+    // operator cannot use to plan trips. A saved value outside the list must be picked again.
+    var vehicle = LogisticsStrings.vehicleTypes.contains(current?.vehicleType)
+        ? current?.vehicleType
+        : null;
     final capacity =
         TextEditingController(text: current?.capacityKg.toString() ?? '');
     final plate = TextEditingController(text: current?.plate ?? '');
@@ -254,13 +258,20 @@ class _CarrierProfileCard extends ConsumerWidget {
       builder: (dialogContext) => AlertDialog(
         title: const Text(LogisticsStrings.vehicleData),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(
-            controller: vehicle,
-            textCapitalization: TextCapitalization.words,
-            maxLength: 40,
-            decoration:
-                const InputDecoration(labelText: LogisticsStrings.vehicleType),
+          StatefulBuilder(
+            builder: (context, setDialogState) =>
+                DropdownButtonFormField<String>(
+              initialValue: vehicle,
+              decoration: const InputDecoration(
+                  labelText: LogisticsStrings.vehicleType),
+              items: [
+                for (final type in LogisticsStrings.vehicleTypes)
+                  DropdownMenuItem(value: type, child: Text(type)),
+              ],
+              onChanged: (value) => setDialogState(() => vehicle = value),
+            ),
           ),
+          const SizedBox(height: 12),
           TextField(
             controller: capacity,
             keyboardType: TextInputType.number,
@@ -287,7 +298,8 @@ class _CarrierProfileCard extends ConsumerWidget {
     );
     if (saved == true && context.mounted) {
       final kg = int.tryParse(capacity.text.trim());
-      if (vehicle.text.trim().length >= 2 &&
+      final vehicleType = vehicle;
+      if (vehicleType != null &&
           kg != null &&
           kg > 0 &&
           plate.text.trim().length >= 3) {
@@ -295,7 +307,7 @@ class _CarrierProfileCard extends ConsumerWidget {
           await ref.read(logisticsRepositoryProvider).saveCarrierProfile(
                 userId: userId,
                 profile: CarrierProfile(
-                  vehicleType: vehicle.text.trim(),
+                  vehicleType: vehicleType,
                   capacityKg: kg,
                   plate: plate.text.trim().toUpperCase(),
                 ),
@@ -321,7 +333,6 @@ class _CarrierProfileCard extends ConsumerWidget {
         }
       }
     }
-    vehicle.dispose();
     capacity.dispose();
     plate.dispose();
   }
