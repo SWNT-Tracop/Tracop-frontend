@@ -123,6 +123,29 @@ flutter build ipa --release \
   --dart-define=API_BASE_URL=https://api.tracop.co
 ```
 
+### APK automático en cada merge a `main`
+
+`.github/workflows/deploy.yml` corre `analyze` y `test`, compila el APK firmado y lo publica como GitHub Release `build-<n>` (`tracop-build-<n>.apk`). El número de versión sube en cada build, así que el APK nuevo se instala encima del anterior.
+
+**Configuración del repositorio** (Settings → Secrets and variables → Actions):
+
+| Tipo | Nombre | Valor |
+| --- | --- | --- |
+| Variable | `API_BASE_URL` | URL HTTPS del backend desplegado |
+| Variable | `PRIVACY_POLICY_VERSION` | La misma versión que la API; si falta, `v0-draft` |
+| Secreto | `ANDROID_KEYSTORE_BASE64` | El `.jks` en base64 |
+| Secreto | `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | Los de la clave |
+
+**Crear la clave una sola vez**, fuera del repositorio y guardándola en un lugar seguro. Si se pierde, los celulares tendrán que desinstalar la app para instalar la siguiente versión.
+
+```bash
+keytool -genkeypair -v -keystore tracop-release.jks -alias tracop \
+  -keyalg RSA -keysize 4096 -validity 10000
+base64 -w0 tracop-release.jks   # valor de ANDROID_KEYSTORE_BASE64
+```
+
+Para firmar en local, crea `android/key.properties` (ignorado por git) con `storeFile`, `storePassword`, `keyAlias` y `keyPassword`. Sin ese archivo, `flutter build apk --release` firma con la clave debug.
+
 ### Variables de compilación
 
 | Variable | Uso |
