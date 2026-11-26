@@ -33,6 +33,7 @@ import '../features/payments/presentation/screens/payments_dashboard_screen.dart
 import '../features/payments/presentation/screens/settlements_screen.dart';
 import '../features/payments/presentation/screens/staff_payment_detail_screen.dart';
 import '../features/backoffice/presentation/backoffice_screen.dart';
+import '../features/backoffice/presentation/accounts_admin_screen.dart';
 import '../features/recommendations/presentation/recommendations_screen.dart';
 import '../features/recommendations/presentation/pricing_mappings_screen.dart';
 import '../core/auth/role_access.dart';
@@ -187,6 +188,16 @@ final router = GoRouter(
                 roles: RoleAccess.rolesFor(StaffTool.parameters),
                 child: const BackofficeScreen(
                     section: BackofficeSection.parameters)),
+          ),
+        ),
+        GoRoute(
+          path: '/backoffice/cuentas',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            StaffRoleGate(
+                roles: RoleAccess.rolesFor(StaffTool.accounts),
+                child: const Scaffold(body: AccountsAdminScreen())),
           ),
         ),
         GoRoute(
