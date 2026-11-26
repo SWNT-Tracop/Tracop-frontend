@@ -8,6 +8,7 @@ class AppTheme {
   static const Color background = Color(0xFFF7F7F2);
   static const Color ink = Color(0xFF1F2937);
   static const Color mutedText = Color(0xFF6B7280);
+  static const Color hintText = Color(0xFF9AA0A8);
   static const Color outline = Color(0xFFE5E7EB);
   static const Color white = Colors.white;
   static const Color headerSurface = Color(0xFFFDFBF3);
@@ -156,6 +157,8 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: white,
+        // Light grey so an example (hint) never looks like text already typed.
+        hintStyle: const TextStyle(color: hintText),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         border: OutlineInputBorder(
@@ -234,6 +237,8 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: scheme.surface,
+        hintStyle:
+            TextStyle(color: scheme.onSurfaceVariant.withValues(alpha: .6)),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         border: OutlineInputBorder(
