@@ -81,7 +81,25 @@ class ResponsiveShell extends ConsumerWidget {
   List<({String path, String label, IconData icon})> _destinationsFor(
           String? role) =>
       PaymentPermissions.isStaff(role)
-          ? _staffDestinations
+          ? [
+              ..._staffDestinations.take(3),
+              const (
+                path: '/backoffice/resumen',
+                label: 'Operación',
+                icon: Icons.dashboard_outlined
+              ),
+              const (
+                path: '/backoffice/verificaciones',
+                label: 'Confianza',
+                icon: Icons.verified_user_outlined
+              ),
+              const (
+                path: '/backoffice/catalogo',
+                label: 'Catálogo',
+                icon: Icons.category_outlined
+              ),
+              _staffDestinations[3],
+            ]
           : role == 'carrier'
               ? const [
                   (
@@ -194,6 +212,46 @@ class ResponsiveShell extends ConsumerWidget {
           ],
         ),
       );
+    }
+  }
+
+  Future<void> _showStaffMenu(BuildContext context, String? role) async {
+    if (!PaymentPermissions.isStaff(role)) return;
+    final destination = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(children: [
+          const ListTile(
+            title: Text('Más herramientas'),
+            subtitle: Text('Accesos administrativos'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.local_shipping_outlined),
+            title: const Text('Logística'),
+            onTap: () => Navigator.pop(sheetContext, '/backoffice/logistica'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.fact_check_outlined),
+            title: const Text('Propuestas'),
+            onTap: () => Navigator.pop(sheetContext, '/backoffice/propuestas'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.tune_outlined),
+            title: const Text('Parámetros'),
+            onTap: () => Navigator.pop(sheetContext, '/backoffice/parametros'),
+          ),
+          if (role == 'admin')
+            ListTile(
+              leading: const Icon(Icons.history_outlined),
+              title: const Text('Auditoría'),
+              onTap: () => Navigator.pop(sheetContext, '/backoffice/auditoria'),
+            ),
+        ]),
+      ),
+    );
+    if (destination != null && context.mounted) {
+      await _guardedGo(context, destination);
     }
   }
 
@@ -321,6 +379,12 @@ class ResponsiveShell extends ConsumerWidget {
                     ),
                   ),
                 ),
+                if (PaymentPermissions.isStaff(role))
+                  IconButton(
+                    tooltip: 'Más herramientas',
+                    onPressed: () => _showStaffMenu(context, role),
+                    icon: const Icon(Icons.more_horiz),
+                  ),
                 Tooltip(
                   message: NavStrings.profileTooltip(displayName),
                   child: InkWell(
@@ -427,6 +491,12 @@ class ResponsiveShell extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  if (PaymentPermissions.isStaff(role))
+                    IconButton(
+                      tooltip: 'Más herramientas',
+                      onPressed: () => _showStaffMenu(context, role),
+                      icon: const Icon(Icons.more_horiz),
+                    ),
                   const SizedBox(width: 10),
                   Flexible(
                     child: InkWell(
