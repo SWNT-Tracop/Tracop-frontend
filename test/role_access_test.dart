@@ -129,4 +129,20 @@ void main() {
     final adminTools = await _staffTools(tester);
     expect(adminTools, containsAll(['Auditoría', 'Logística', 'Cuentas']));
   });
+
+  testWidgets('every admin tool can be reached on a phone screen',
+      (tester) async {
+    await _pumpShell(tester, 'admin');
+    await tester.tap(find.byTooltip('Más herramientas'));
+    await tester.pumpAndSettle();
+    final accounts = find.text('Cuentas');
+    await tester.scrollUntilVisible(accounts, 120,
+        scrollable: find
+            .descendant(
+                of: find.byType(BottomSheet), matching: find.byType(Scrollable))
+            .first);
+    final bottom = tester.getBottomLeft(accounts).dy;
+    expect(bottom, lessThanOrEqualTo(844),
+        reason: 'the last tool must be on screen, not cut off');
+  });
 }
