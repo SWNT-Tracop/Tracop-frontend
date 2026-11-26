@@ -251,21 +251,61 @@ class LogisticsRepository {
     required TripStop stop,
     required String kind,
     required int baseVersion,
-  }) async {
-    if (await _markLocalStopComplete(userId, stop.id)) return;
-    await _enqueue(
-      ownerUserId: userId,
-      entity: 'checkin',
-      entityId: _uuid.v7(),
-      type: 'create',
-      baseVersion: baseVersion,
-      payload: {
-        'stopId': stop.id,
-        'kind': kind,
-        'clientAt': DateTime.now().toUtc().toIso8601String(),
-      },
-    );
-    await syncPending(userId);
+  }) {
+    // One check-in at a time: two quick taps must not both pass the queued check below.
+    final run = _checkInQueue.then((_) async {
+      if (await _markLocalStopComplete(userId, stop.id)) return;
+      // A second tap while the first check-in still waits (offline) would queue another one,
+      // which the server then rejects as invalid_transition.
+      if (await _hasQueuedCheckIn(userId, stop.id)) return;
+      await _enqueue(
+        ownerUserId: userId,
+        entity: 'checkin',
+        entityId: _uuid.v7(),
+        type: 'create',
+        baseVersion: baseVersion,
+        payload: {
+          'stopId': stop.id,
+          'kind': kind,
+          'clientAt': DateTime.now().toUtc().toIso8601String(),
+        },
+      );
+      // Offline the stop list comes from this cache: show the stop as done right away.
+      await _markCachedStopComplete(userId, stop.id);
+      await syncPending(userId);
+    });
+    _checkInQueue = run.catchError((_) {});
+    return run;
+  }
+
+  Future<void> _checkInQueue = Future<void>.value();
+
+  Future<bool> _hasQueuedCheckIn(String userId, String stopId) async {
+    final rows = await (database.select(database.outboxOperations)
+          ..where((row) =>
+              row.ownerUserId.equals(userId) &
+              row.entity.equals('checkin') &
+              row.status.equals('pending')))
+        .get();
+    return rows.any((row) =>
+        (jsonDecode(row.payloadJson) as Map<String, dynamic>)['stopId'] ==
+        stopId);
+  }
+
+  Future<void> _markCachedStopComplete(String userId, String stopId) async {
+    final prefix = 'logistics:$userId:stops:';
+    final rows = await (database.select(database.syncState)
+          ..where((row) => row.key.like('$prefix%')))
+        .get();
+    for (final row in rows) {
+      final stops = (jsonDecode(row.value) as List)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+      final index = stops.indexWhere((item) => item['id'] == stopId);
+      if (index < 0) continue;
+      stops[index]['completedAt'] ??= DateTime.now().toUtc().toIso8601String();
+      await _saveCache(row.key, stops);
+    }
   }
 
   Future<void> openIncident({

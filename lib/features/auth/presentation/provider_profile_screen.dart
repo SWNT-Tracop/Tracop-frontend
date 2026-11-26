@@ -2,23 +2,21 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
-import 'package:latlong2/latlong.dart';
 
 import '../../../app/messenger.dart';
 import '../../../app/motion.dart';
 import '../../../app/theme.dart';
 import '../../../core/config/colombia_locations.dart';
 import '../../../core/i18n/strings.dart';
-import '../../../core/location/device_location.dart';
 import '../../../core/result/result.dart';
 import '../../../shared/widgets/option_selectors.dart';
 import '../../home/presentation/home_screen.dart';
 import '../domain/entities/auth_session.dart';
 import 'providers/auth_provider.dart';
+import '../../../shared/widgets/pickup_point_picker.dart';
 
 typedef _S = ProviderProfileStrings;
 
@@ -46,13 +44,10 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
       _description = TextEditingController();
   final _lat = TextEditingController(), _lng = TextEditingController();
   final _storage = const FlutterSecureStorage();
-  final _map = MapController();
   String? _department, _municipality, _error;
-  DeviceLocationProblem? _gpsProblem;
   int _step = 0;
   bool _loading = true,
       _saving = false,
-      _locating = false,
       _success = false,
       _draftRestored = false;
   String _producerType = _S.producerTypes.first;
@@ -71,7 +66,6 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
     _description.dispose();
     _lat.dispose();
     _lng.dispose();
-    _map.dispose();
     super.dispose();
   }
 
@@ -425,44 +419,23 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
                 title: _S.pointTitle,
                 body: _S.pointBody),
             const SizedBox(height: 16),
-            _LocationPickerMap(
-                controller: _map,
-                center: _mapCenter(),
-                zoom: _mapZoom(),
-                point: _selectedPoint(),
-                onSelect: _mapSelection),
-            if (ref.watch(homeConnectivityProvider).valueOrNull == false) ...[
-              const SizedBox(height: 8),
-              const _Notice(icon: Icons.wifi_off, text: _S.mapOffline),
-            ],
-            const SizedBox(height: 12),
-            if (_municipalityCentre() case final centre?)
-              FilledButton.tonalIcon(
-                  onPressed: () => _moveTo(centre.lat, centre.lng),
-                  icon: const Icon(Icons.location_city),
-                  label: Text(_S.useMunicipalityCentre(centre.name))),
-            TextButton.icon(
-                onPressed: _locating ? null : _useGps,
-                icon: _locating
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.gps_fixed),
-                label: Text(_locating ? _S.gpsLocating : _S.useGps)),
-            if (_gpsProblem == DeviceLocationProblem.serviceDisabled ||
-                _gpsProblem == DeviceLocationProblem.deniedForever)
-              TextButton(
-                  onPressed: () => openLocationSettings(_gpsProblem!),
-                  child: const Text(_S.openSettings)),
+            PickupPointPicker(
+                lat: _coordinate(_lat.text),
+                lng: _coordinate(_lng.text),
+                onSelect: _mapSelection,
+                reference: switch (_municipalityCentre()) {
+                  final centre? => PickupReference(
+                      label: _S.useMunicipalityCentre(centre.name),
+                      lat: centre.lat,
+                      lng: centre.lng),
+                  null => null,
+                }),
+            const SizedBox(height: 8),
             const Row(children: [
               Icon(Icons.lock_outline, size: 18),
               SizedBox(width: 8),
               Expanded(child: Text(_S.privacy))
             ]),
-            if (_selectedPoint() != null) ...[
-              const SizedBox(height: 6),
-              Text(_S.pointChosen, style: Theme.of(context).textTheme.bodySmall)
-            ]
           ]),
         _ => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             const _StepIntro(
@@ -532,31 +505,6 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
   ColombiaMunicipality? _municipalityCentre() =>
       ColombiaLocations.municipality(_department, _municipality);
 
-  LatLng? _selectedPoint() {
-    final lat = _coordinate(_lat.text), lng = _coordinate(_lng.text);
-    return lat == null || lng == null ? null : LatLng(lat, lng);
-  }
-
-  LatLng _mapCenter() {
-    final centre = _municipalityCentre();
-    return _selectedPoint() ??
-        (centre == null
-            ? const LatLng(ColombiaBounds.defaultLat, ColombiaBounds.defaultLng)
-            : LatLng(centre.lat, centre.lng));
-  }
-
-  double _mapZoom() =>
-      _selectedPoint() != null || _municipalityCentre() != null ? 14 : 6;
-
-  void _moveTo(double lat, double lng) {
-    _mapSelection(lat, lng);
-    try {
-      _map.move(LatLng(lat, lng), 15);
-    } catch (_) {
-      // The map is not on screen yet; it opens on the chosen point.
-    }
-  }
-
   void _mapSelection(double lat, double lng) {
     setState(() {
       _lat.text = lat.toStringAsFixed(ColombiaBounds.coordinateDecimals);
@@ -565,34 +513,6 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
     });
     _saveDraft();
     HapticFeedback.selectionClick();
-  }
-
-  Future<void> _useGps() async {
-    setState(() {
-      _locating = true;
-      _gpsProblem = null;
-      _error = null;
-    });
-    final result = await ref.read(deviceLocatorProvider)();
-    if (!mounted) return;
-    setState(() => _locating = false);
-    switch (result) {
-      case DeviceLocationFound(:final lat, :final lng)
-          when ColombiaBounds.contains(lat, lng):
-        _moveTo(lat, lng);
-      case DeviceLocationFound():
-        setState(() => _error = _S.gpsOutside);
-      case DeviceLocationFailed(:final problem):
-        setState(() {
-          _gpsProblem = problem;
-          _error = switch (problem) {
-            DeviceLocationProblem.serviceDisabled => _S.gpsServiceDisabled,
-            DeviceLocationProblem.permissionDenied => _S.gpsPermissionDenied,
-            DeviceLocationProblem.deniedForever => _S.gpsDeniedForever,
-            DeviceLocationProblem.unavailable => _S.gpsUnavailable,
-          };
-        });
-    }
   }
 
   Widget _successScreen() => Scaffold(
@@ -673,77 +593,6 @@ class _ReviewRow extends StatelessWidget {
 }
 
 // Mapa esquematico: el pin se ubica donde quedo el punto elegido.
-class _LocationPickerMap extends StatelessWidget {
-  const _LocationPickerMap(
-      {required this.controller,
-      required this.center,
-      required this.zoom,
-      required this.point,
-      required this.onSelect});
-  final MapController controller;
-  final LatLng center;
-  final double zoom;
-  final LatLng? point;
-  final void Function(double lat, double lng) onSelect;
-
-  static const _height = 280.0;
-  static const _pinSize = 44.0;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-      label: _S.mapLabel,
-      child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: SizedBox(
-              height: _height,
-              child: FlutterMap(
-                  mapController: controller,
-                  options: MapOptions(
-                      initialCenter: center,
-                      initialZoom: zoom,
-                      minZoom: 5,
-                      maxZoom: 18,
-                      cameraConstraint: CameraConstraint.contain(
-                          bounds: LatLngBounds(
-                              const LatLng(
-                                  ColombiaBounds.minLat, ColombiaBounds.minLng),
-                              const LatLng(ColombiaBounds.maxLat,
-                                  ColombiaBounds.maxLng))),
-                      interactionOptions: const InteractionOptions(
-                          flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
-                      onTap: (_, tapped) => onSelect(
-                          tapped.latitude.clamp(
-                              ColombiaBounds.minLat, ColombiaBounds.maxLat),
-                          tapped.longitude.clamp(
-                              ColombiaBounds.minLng, ColombiaBounds.maxLng))),
-                  children: [
-                    TileLayer(
-                        urlTemplate:
-                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.example.tracop_mobile'),
-                    if (point case final selected?)
-                      MarkerLayer(markers: [
-                        Marker(
-                            point: selected,
-                            width: _pinSize,
-                            height: _pinSize,
-                            alignment: Alignment.topCenter,
-                            child: const Icon(Icons.location_pin,
-                                color: AppTheme.forest, size: _pinSize)),
-                      ]),
-                    Align(
-                        alignment: Alignment.bottomRight,
-                        child: Container(
-                            margin: const EdgeInsets.all(6),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            color: Colors.white.withValues(alpha: .8),
-                            child: Text(_S.mapAttribution,
-                                style:
-                                    Theme.of(context).textTheme.labelSmall))),
-                  ]))));
-}
-
 class _Notice extends StatelessWidget {
   const _Notice({required this.icon, required this.text, this.onClose});
   final IconData icon;

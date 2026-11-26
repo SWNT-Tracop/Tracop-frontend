@@ -167,6 +167,9 @@ abstract final class LogisticsStrings {
   static const complete = 'Completar';
   static const vehicleData = 'Datos del vehículo';
   static const vehicleType = 'Tipo de vehículo';
+
+  /// PROVISIONAL: vocabulario de vehículos del piloto (§23).
+  static const vehicleTypes = ['Moto', 'Carro', 'Camioneta', 'Camión', 'Otro'];
   static const vehicleCapacity = 'Capacidad (kg)';
   static const plate = 'Placa';
   static const profileSaved = 'Perfil guardado para sincronizar.';
@@ -468,6 +471,10 @@ abstract final class LotFormStrings {
   static const keepEditing = 'Seguir editando';
   static const leave = 'Salir';
   static const useProfilePoint = 'Usar el punto de recogida de mi perfil';
+  static const pointRequired =
+      'Toca el mapa en el punto de recogida, o usa el de tu perfil o tu ubicación.';
+  static const pointOutside =
+      'El punto de recogida debe estar en Colombia. Elígelo en el mapa.';
   static const profilePointUsed =
       'Tomamos el punto de recogida de tu perfil. Puedes cambiarlo si este lote sale de otro lugar.';
   static const completeProfile = 'Completar perfil';

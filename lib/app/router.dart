@@ -35,6 +35,7 @@ import '../features/payments/presentation/screens/staff_payment_detail_screen.da
 import '../features/backoffice/presentation/backoffice_screen.dart';
 import '../features/recommendations/presentation/recommendations_screen.dart';
 import '../features/recommendations/presentation/pricing_mappings_screen.dart';
+import '../core/auth/role_access.dart';
 
 final router = GoRouter(
   initialLocation: '/splash',
@@ -116,9 +117,9 @@ final router = GoRouter(
           pageBuilder: (context, state) => _routePage(
             context,
             state,
-            const StaffRoleGate(
-              roles: {'operator', 'admin'},
-              child: PricingMappingsScreen(),
+            StaffRoleGate(
+              roles: RoleAccess.rolesFor(StaffTool.pricing),
+              child: const PricingMappingsScreen(),
             ),
           ),
         ),
@@ -127,8 +128,10 @@ final router = GoRouter(
           pageBuilder: (context, state) => _routePage(
             context,
             state,
-            const StaffRoleGate(
-                child: BackofficeScreen(section: BackofficeSection.dashboard)),
+            StaffRoleGate(
+                roles: RoleAccess.rolesFor(StaffTool.operations),
+                child: const BackofficeScreen(
+                    section: BackofficeSection.dashboard)),
           ),
         ),
         GoRoute(
@@ -136,9 +139,10 @@ final router = GoRouter(
           pageBuilder: (context, state) => _routePage(
             context,
             state,
-            const StaffRoleGate(
-                child:
-                    BackofficeScreen(section: BackofficeSection.verifications)),
+            StaffRoleGate(
+                roles: RoleAccess.rolesFor(StaffTool.trust),
+                child: const BackofficeScreen(
+                    section: BackofficeSection.verifications)),
           ),
         ),
         GoRoute(
@@ -146,8 +150,10 @@ final router = GoRouter(
           pageBuilder: (context, state) => _routePage(
             context,
             state,
-            const StaffRoleGate(
-                child: BackofficeScreen(section: BackofficeSection.proposals)),
+            StaffRoleGate(
+                roles: RoleAccess.rolesFor(StaffTool.proposals),
+                child: const BackofficeScreen(
+                    section: BackofficeSection.proposals)),
           ),
         ),
         GoRoute(
@@ -155,8 +161,10 @@ final router = GoRouter(
           pageBuilder: (context, state) => _routePage(
             context,
             state,
-            const StaffRoleGate(
-                child: BackofficeScreen(section: BackofficeSection.catalog)),
+            StaffRoleGate(
+                roles: RoleAccess.rolesFor(StaffTool.catalog),
+                child:
+                    const BackofficeScreen(section: BackofficeSection.catalog)),
           ),
         ),
         GoRoute(
@@ -164,8 +172,10 @@ final router = GoRouter(
           pageBuilder: (context, state) => _routePage(
             context,
             state,
-            const StaffRoleGate(
-                child: BackofficeScreen(section: BackofficeSection.logistics)),
+            StaffRoleGate(
+                roles: RoleAccess.rolesFor(StaffTool.logistics),
+                child: const BackofficeScreen(
+                    section: BackofficeSection.logistics)),
           ),
         ),
         GoRoute(
@@ -173,8 +183,10 @@ final router = GoRouter(
           pageBuilder: (context, state) => _routePage(
             context,
             state,
-            const StaffRoleGate(
-                child: BackofficeScreen(section: BackofficeSection.parameters)),
+            StaffRoleGate(
+                roles: RoleAccess.rolesFor(StaffTool.parameters),
+                child: const BackofficeScreen(
+                    section: BackofficeSection.parameters)),
           ),
         ),
         GoRoute(
@@ -182,9 +194,10 @@ final router = GoRouter(
           pageBuilder: (context, state) => _routePage(
             context,
             state,
-            const StaffRoleGate(
-                roles: {'admin'},
-                child: BackofficeScreen(section: BackofficeSection.audit)),
+            StaffRoleGate(
+                roles: RoleAccess.rolesFor(StaffTool.audit),
+                child:
+                    const BackofficeScreen(section: BackofficeSection.audit)),
           ),
         ),
         GoRoute(
@@ -217,7 +230,8 @@ final router = GoRouter(
             pageBuilder: (context, state) => _routePage(
                   context,
                   state,
-                  const MyLotsScreen(),
+                  // GET /lots/mine answers 403 to anyone who does not sell.
+                  const RoleGate(roles: sellerRoles, child: MyLotsScreen()),
                 )),
         GoRoute(
             path: '/lotes/nuevo',

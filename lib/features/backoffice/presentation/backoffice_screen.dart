@@ -8,6 +8,7 @@ import '../../../core/result/result.dart';
 import '../../auth/presentation/providers/auth_provider.dart';
 import '../data/backoffice_remote.dart';
 import 'backoffice_provider.dart';
+import '../../../core/auth/role_access.dart';
 
 enum BackofficeSection {
   dashboard,
@@ -1335,10 +1336,10 @@ class _ParameterTile extends ConsumerWidget {
           subtitle: Text(
               '${item['description'] ?? ''}\nRango: ${item['min'] ?? '-'} a ${item['max'] ?? '-'} ${item['provisional'] == true ? '· PROVISIONAL' : ''}'),
           trailing: TextButton(
-              onPressed:
-                  ref.watch(authProvider).valueOrNull?.user.role == 'admin'
-                      ? () => _edit(context, ref)
-                      : null,
+              onPressed: RoleAccess.canEditParameters(
+                      ref.watch(authProvider).valueOrNull?.user.role)
+                  ? () => _edit(context, ref)
+                  : null,
               child: Text(item['value']?.toString() ?? ''))));
   Future<void> _edit(BuildContext context, WidgetRef ref) async {
     final c = TextEditingController(text: item['value']?.toString() ?? '');

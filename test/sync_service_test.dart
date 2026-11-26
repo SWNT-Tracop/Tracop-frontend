@@ -104,4 +104,31 @@ void main() {
     await service.discardOperation('op-1');
     expect(await (database.select(database.outboxOperations)).get(), isEmpty);
   });
+
+  test('hasPendingDue sees only due pending operations of that user', () async {
+    final past = DateTime.now().toUtc().subtract(const Duration(minutes: 1));
+    final future = DateTime.now().toUtc().add(const Duration(hours: 1));
+    Future<void> add(String opId, String owner, String status, DateTime next) =>
+        database.into(database.outboxOperations).insert(
+              OutboxOperationsCompanion.insert(
+                opId: opId,
+                ownerUserId: Value(owner),
+                entity: 'lot',
+                entityId: 'lot-$opId',
+                type: 'create',
+                payloadJson: '{}',
+                clientTs: past,
+                status: status,
+                attempts: 0,
+                nextAttemptAt: next,
+              ),
+            );
+    expect(await service.hasPendingDue('user-1'), isFalse);
+    await add('waiting', 'user-1', 'pending', future);
+    await add('rejected', 'user-1', 'rejected', past);
+    await add('other-user', 'user-2', 'pending', past);
+    expect(await service.hasPendingDue('user-1'), isFalse);
+    await add('due', 'user-1', 'pending', past);
+    expect(await service.hasPendingDue('user-1'), isTrue);
+  });
 }
