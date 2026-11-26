@@ -159,4 +159,10 @@ class BackofficeRemoteDataSource {
       Map<String, dynamic>.from(
           (await _client.instance.post('/logistics/incidents/$id/resolve')).data
               as Map);
+
+  Future<Map<String, dynamic>> locationPack(String tripId) =>
+      _get('/logistics/trips/$tripId/location-pack');
+
+  Future<Map<String, dynamic>> stopLocation(String tripId, String stopId) =>
+      _get('/logistics/trips/$tripId/stops/$stopId/location');
 }

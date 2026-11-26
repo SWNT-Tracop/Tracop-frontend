@@ -687,6 +687,7 @@ class _TripTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListTile(
+        onTap: () => _showDetail(context),
         title: Text(item['id']?.toString() ?? 'Viaje'),
         subtitle:
             Text('${item['status'] ?? ''} · versión ${item['version'] ?? '-'}'),
@@ -703,6 +704,16 @@ class _TripTile extends StatelessWidget {
           ),
         ]),
       );
+
+  Future<void> _showDetail(BuildContext context) async {
+    final id = item['id']?.toString();
+    if (id == null) return;
+    final remote = _backofficeRemote(context);
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _TripDetailDialog(tripId: id, remote: remote),
+    );
+  }
 
   Future<void> _reassign(BuildContext context) async {
     if (carriers.isEmpty) return;
@@ -732,6 +743,91 @@ class _TripTile extends StatelessWidget {
       ProviderScope.containerOf(context)
           .read(backofficeRepositoryProvider)
           .remote;
+}
+
+class _TripDetailDialog extends StatefulWidget {
+  const _TripDetailDialog({required this.tripId, required this.remote});
+  final String tripId;
+  final BackofficeRemoteDataSource remote;
+
+  @override
+  State<_TripDetailDialog> createState() => _TripDetailDialogState();
+}
+
+class _TripDetailDialogState extends State<_TripDetailDialog> {
+  late final Future<List<Object>> data = Future.wait<Object>([
+    widget.remote.trip(widget.tripId),
+    widget.remote.tripStops(widget.tripId),
+  ]);
+  bool showLocations = false;
+  Future<Map<String, dynamic>>? locations;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Detalle del viaje'),
+        content: SizedBox(
+          width: 560,
+          child: FutureBuilder<List<Object>>(
+            future: data,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const SizedBox(
+                    height: 120,
+                    child: Center(child: CircularProgressIndicator()));
+              }
+              if (snapshot.hasError) {
+                return const Text('No se pudo cargar el detalle del viaje.');
+              }
+              final trip = _map(snapshot.data![0]);
+              final stops = snapshot.data![1] as List;
+              return ListView(shrinkWrap: true, children: [
+                Text('Estado: ${trip['status'] ?? '-'}'),
+                Text('Versión: ${trip['version'] ?? '-'}'),
+                const Divider(),
+                for (final raw in stops)
+                  ListTile(
+                    dense: true,
+                    title: Text(
+                        '${_map(raw)['kind'] ?? 'Parada'} · ${_map(raw)['zone'] ?? ''}'),
+                    subtitle: Text('Pedido: ${_map(raw)['orderId'] ?? '-'}'),
+                  ),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      showLocations = true;
+                      locations ??= widget.remote.locationPack(widget.tripId);
+                    });
+                  },
+                  icon: const Icon(Icons.location_on_outlined),
+                  label: const Text('Ver ubicaciones temporales'),
+                ),
+                if (showLocations && locations != null)
+                  FutureBuilder<Map<String, dynamic>>(
+                    future: locations,
+                    builder: (context, locationSnapshot) {
+                      if (locationSnapshot.connectionState !=
+                          ConnectionState.done) {
+                        return const LinearProgressIndicator();
+                      }
+                      if (locationSnapshot.hasError) {
+                        return const Text(
+                            'La ubicación no está disponible o ya expiró.');
+                      }
+                      final pack = locationSnapshot.data!;
+                      return Text(
+                          'Vigencia: ${pack['expiresAt'] ?? '-'}\n${pack['stops'] ?? []}');
+                    },
+                  ),
+              ]);
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cerrar')),
+        ],
+      );
 }
 
 class _IncidentsPanel extends StatelessWidget {

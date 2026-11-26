@@ -37,3 +37,23 @@ const backofficeAuditFixture = <dynamic>[
     'after': {'value': '18000'},
   },
 ];
+
+const backofficeLogisticsFixture = <String, dynamic>{
+  'carriers': [
+    {'userId': 'carrier-1', 'vehicleType': 'Camión', 'capacityKg': 1000},
+  ],
+  'trips': [
+    {'id': 'trip-1', 'status': 'assigned', 'version': 2},
+  ],
+  'conflicts': {
+    'orderIds': ['order-1']
+  },
+  'incidents': [
+    {
+      'id': 'incident-1',
+      'type': 'delay',
+      'description': 'Retraso',
+      'status': 'open'
+    },
+  ],
+};

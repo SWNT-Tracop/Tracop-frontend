@@ -13,6 +13,7 @@ void main() {
     List<dynamic>? categories,
     List<dynamic>? products,
     List<dynamic>? audit,
+    Map<String, dynamic>? logistics,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -25,6 +26,8 @@ void main() {
               (ref) async => products ?? backofficeProductsFixture),
           backofficeAuditProvider
               .overrideWith((ref) async => audit ?? backofficeAuditFixture),
+          backofficeLogisticsProvider.overrideWith(
+              (ref) async => logistics ?? backofficeLogisticsFixture),
         ],
         child: MaterialApp(
           home: BackofficeScreen(section: section),
@@ -62,5 +65,17 @@ void main() {
     expect(find.textContaining('order.freight_cop'), findsOneWidget);
     expect(find.textContaining('15000'), findsOneWidget);
     expect(find.textContaining('18000'), findsOneWidget);
+  });
+
+  testWidgets('logistics displays trips, incidents and conflicts',
+      (tester) async {
+    await pumpSection(tester, BackofficeSection.logistics);
+
+    expect(find.text('Viajes activos (1)'), findsOneWidget);
+    expect(find.text('Incidencias (1)'), findsOneWidget);
+    expect(find.textContaining('order-1'), findsOneWidget);
+    await tester.tap(find.text('Viajes activos (1)'));
+    await tester.pumpAndSettle();
+    expect(find.text('trip-1'), findsOneWidget);
   });
 }
