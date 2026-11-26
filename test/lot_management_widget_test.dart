@@ -20,6 +20,9 @@ import 'package:tracop_mobile/features/catalog/domain/repository/product_proposa
 import 'package:tracop_mobile/features/catalog/presentation/providers/catalog_provider.dart';
 import 'package:tracop_mobile/features/catalog/presentation/providers/product_proposal_provider.dart';
 import 'package:tracop_mobile/features/home/presentation/home_screen.dart';
+import 'package:tracop_mobile/core/location/device_location.dart';
+import 'package:tracop_mobile/core/i18n/strings.dart';
+import 'package:tracop_mobile/shared/widgets/pickup_point_picker.dart';
 
 void main() {
   testWidgets('my lots lists drafts and publishes them', (tester) async {
@@ -124,18 +127,21 @@ void main() {
         )));
     await tester.pumpAndSettle();
 
-    final lat = find.widgetWithText(TextField, 'Latitud');
-    await _scrollTo(tester, lat);
-    expect(tester.widget<TextField>(lat).controller!.text, '5.5353');
+    expect(find.widgetWithText(TextField, 'Latitud'), findsNothing,
+        reason: 'nobody types coordinates');
+    expect(find.text(ProviderProfileStrings.pointChosen), findsOneWidget);
     expect(
         find.textContaining('punto de recogida de tu perfil'), findsOneWidget);
 
-    await tester.enterText(lat, '6.1');
-    await tester.pump();
-    expect(find.text('Usar el punto de recogida de mi perfil'), findsOneWidget);
-    await tester.tap(find.text('Usar el punto de recogida de mi perfil'));
-    await tester.pump();
-    expect(tester.widget<TextField>(lat).controller!.text, '5.5353');
+    await _useGps(tester);
+    expect(find.textContaining('punto de recogida de tu perfil'), findsNothing);
+    expect(find.text(LotFormStrings.useProfilePoint), findsOneWidget);
+    tester
+        .widget<PickupPointPicker>(find.byType(PickupPointPicker))
+        .onSelect(5.5353, -73.3678);
+    await tester.pumpAndSettle();
+    expect(
+        find.textContaining('punto de recogida de tu perfil'), findsOneWidget);
 
     // Rellenar desde el perfil no cuenta como cambio sin guardar.
     await tester.ensureVisible(find.byTooltip('Volver'));
@@ -167,8 +173,7 @@ void main() {
         findsOneWidget);
     expect(
         find.text('Escribe un precio entero mayor que cero.'), findsOneWidget);
-    expect(find.text('Escribe una latitud válida.'), findsOneWidget);
-    expect(find.text('Escribe una longitud válida.'), findsOneWidget);
+    expect(find.text(LotFormStrings.pointRequired), findsOneWidget);
     expect(
         tester
             .getTopLeft(
@@ -186,20 +191,7 @@ void main() {
     await tester.enterText(find.widgetWithText(TextField, 'Cantidad'), '25.5');
     await tester.enterText(
         find.widgetWithText(TextField, 'Precio por unidad'), '3200');
-    await tester.enterText(find.widgetWithText(TextField, 'Latitud'), '14');
-    await tester.enterText(find.widgetWithText(TextField, 'Longitud'), '-73.3');
-
-    await _scrollTo(tester, find.text('Guardar borrador').last);
-    await tester.tap(find.text('Guardar borrador').last);
-    await tester.pumpAndSettle();
-    expect(find.text('Completa los campos marcados para continuar.'),
-        findsOneWidget);
-    expect(find.text('Revisa la ubicación.'), findsOneWidget);
-    expect(
-        find.text('Las coordenadas deben estar en Colombia.'), findsOneWidget);
-    expect(repository.created, isNull);
-
-    await tester.enterText(find.widgetWithText(TextField, 'Latitud'), '5.5353');
+    await _useGps(tester);
     await _scrollTo(tester, find.text('Guardar borrador').last);
     await tester.tap(find.text('Guardar borrador').last);
     await tester.pumpAndSettle();
@@ -233,8 +225,7 @@ void main() {
     await tester.enterText(find.widgetWithText(TextField, 'Cantidad'), '25');
     await tester.enterText(
         find.widgetWithText(TextField, 'Precio por unidad'), '3200');
-    await tester.enterText(find.widgetWithText(TextField, 'Latitud'), '5.5353');
-    await tester.enterText(find.widgetWithText(TextField, 'Longitud'), '-73.3');
+    await _useGps(tester);
 
     await _scrollTo(tester, find.text('Guardar y publicar'));
     await tester.tap(find.text('Guardar y publicar'));
@@ -261,8 +252,7 @@ void main() {
     await tester.enterText(find.widgetWithText(TextField, 'Cantidad'), '25');
     await tester.enterText(
         find.widgetWithText(TextField, 'Precio por unidad'), '3200');
-    await tester.enterText(find.widgetWithText(TextField, 'Latitud'), '5.5353');
-    await tester.enterText(find.widgetWithText(TextField, 'Longitud'), '-73.3');
+    await _useGps(tester);
     await _scrollTo(tester, find.text('Guardar borrador').last);
     await tester.tap(find.text('Guardar borrador').last);
     await tester.pumpAndSettle();
@@ -317,7 +307,9 @@ Future<void> _scrollTo(WidgetTester tester, Finder finder) async {
 }
 
 Widget _testApp(CatalogRepository repository,
-        {bool connected = true, UpsertProviderProfileRequest? profile}) =>
+        {bool connected = true,
+        UpsertProviderProfileRequest? profile,
+        DeviceLocationResult gps = const DeviceLocationFound(5.5353, -73.3)}) =>
     ProviderScope(
       overrides: [
         authRepositoryProvider
@@ -336,6 +328,7 @@ Widget _testApp(CatalogRepository repository,
             )),
         homeLotsProvider.overrideWith((ref) async => const []),
         homeConnectivityProvider.overrideWith((ref) => Stream.value(connected)),
+        deviceLocatorProvider.overrideWithValue(() async => gps),
       ],
       child: const TracopApp(),
     );
@@ -533,4 +526,14 @@ class _AuthRepository implements AuthRepository {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Marks the pickup point as the map or the GPS button would (both call onSelect). The GPS
+/// itself is covered by the provider profile tests of the shared PickupPointPicker.
+Future<void> _useGps(WidgetTester tester) async {
+  tester
+      .widget<PickupPointPicker>(find.byType(PickupPointPicker))
+      .onSelect(5.5353, -73.3);
+  await tester.pumpAndSettle();
+  expect(find.text(ProviderProfileStrings.pointChosen), findsOneWidget);
 }

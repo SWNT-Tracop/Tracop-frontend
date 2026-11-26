@@ -30,6 +30,7 @@ import 'providers/catalog_provider.dart';
 import 'providers/lot_management_provider.dart';
 import 'providers/product_proposal_provider.dart';
 import '../../recommendations/presentation/recommendations_provider.dart';
+import '../../../shared/widgets/pickup_point_picker.dart';
 
 class LotFormScreen extends ConsumerStatefulWidget {
   const LotFormScreen({this.lotId, super.key});
@@ -303,11 +304,11 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
     }
     final lat = parseCoordinate(_lat.text);
     final lng = parseCoordinate(_lng.text);
-    if (lat == null) errors['latitude'] = 'Escribe una latitud válida.';
-    if (lng == null) errors['longitude'] = 'Escribe una longitud válida.';
-    if (lat != null && lng != null && !isWithinColombia(lat, lng)) {
-      errors['latitude'] = 'Revisa la ubicación.';
-      errors['longitude'] = 'Las coordenadas deben estar en Colombia.';
+    if (lat == null || lng == null) {
+      errors['latitude'] = LotFormStrings.pointRequired;
+    } else if (!isWithinColombia(lat, lng)) {
+      // Only a lot saved before the map could hold such a point.
+      errors['latitude'] = LotFormStrings.pointOutside;
     }
     return errors;
   }
@@ -1154,7 +1155,7 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
             _SectionCard(
               title: 'Ubicación',
               subtitle:
-                  'Coordenadas del punto de recogida. Deben estar dentro de Colombia.',
+                  'Toca el mapa donde recogemos el lote, o usa el punto de tu perfil o tu ubicación.',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -1173,20 +1174,27 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
                     ]),
                     const SizedBox(height: 12),
                   ],
-                  if (_profilePoint != null && !_matchesProfilePoint) ...[
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        onPressed: _submitting
-                            ? null
-                            : () => setState(_applyProfilePoint),
-                        icon: const Icon(Icons.my_location_outlined),
-                        label: const Text(LotFormStrings.useProfilePoint),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                  _locationFields(wide),
+                  PickupPointPicker(
+                    lat: parseCoordinate(_lat.text),
+                    lng: parseCoordinate(_lng.text),
+                    enabled: !_submitting,
+                    errorText:
+                        _fieldErrors['latitude'] ?? _fieldErrors['longitude'],
+                    reference: switch (_profilePoint) {
+                      (final double lat, final double lng) => PickupReference(
+                          label: LotFormStrings.useProfilePoint,
+                          lat: lat,
+                          lng: lng),
+                      null => null,
+                    },
+                    onSelect: (lat, lng) {
+                      _lat.text = lat.toStringAsFixed(4);
+                      _lng.text = lng.toStringAsFixed(4);
+                      _usingProfilePoint = _matchesProfilePoint;
+                      // Clears the location errors and rebuilds with the new point.
+                      _clearFieldErrors(['latitude', 'longitude']);
+                    },
+                  ),
                 ],
               ),
             ),
@@ -1212,42 +1220,6 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
       ),
     );
   }
-
-  Widget _locationFields(bool wide) => _ResponsiveRow(
-        wide: wide,
-        children: [
-          TextField(
-            controller: _lat,
-            enabled: !_submitting,
-            keyboardType: const TextInputType.numberWithOptions(
-                decimal: true, signed: true),
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[0-9.,-]')),
-            ],
-            onChanged: (_) => _clearFieldErrors(['latitude', 'longitude']),
-            decoration: InputDecoration(
-              labelText: 'Latitud',
-              hintText: '5.5353',
-              errorText: _fieldErrors['latitude'],
-            ),
-          ),
-          TextField(
-            controller: _lng,
-            enabled: !_submitting,
-            keyboardType: const TextInputType.numberWithOptions(
-                decimal: true, signed: true),
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[0-9.,-]')),
-            ],
-            onChanged: (_) => _clearFieldErrors(['latitude', 'longitude']),
-            decoration: InputDecoration(
-              labelText: 'Longitud',
-              hintText: '-73.3678',
-              errorText: _fieldErrors['longitude'],
-            ),
-          ),
-        ],
-      );
 
   int? _estimatedSubtotal() {
     final quantity = parseQuantityMilli(_quantity.text);
