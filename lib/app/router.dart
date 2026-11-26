@@ -49,7 +49,15 @@ final router = GoRouter(
     GoRoute(
         path: '/otp-verify',
         builder: (context, state) => OtpVerifyScreen(
-              phone: state.extra as String? ?? '',
+              phone: switch (state.extra) {
+                OtpRouteArgs(:final phone) => phone,
+                String phone => phone,
+                _ => '',
+              },
+              botLink: switch (state.extra) {
+                OtpRouteArgs(:final botLink) => botLink,
+                _ => null,
+              },
               providerSetup:
                   state.uri.queryParameters['providerSetup'] == 'true',
             )),

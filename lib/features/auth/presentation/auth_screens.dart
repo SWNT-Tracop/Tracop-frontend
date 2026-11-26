@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/config/env.dart';
+import '../../../core/i18n/strings.dart';
 import '../../../core/result/result.dart';
 import '../../../app/theme.dart';
 import '../../../shared/widgets/option_selectors.dart';
@@ -44,6 +46,18 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       );
 }
 
+/// Arguments of the code screen: the phone and the bot that delivers the code.
+class OtpRouteArgs {
+  const OtpRouteArgs({required this.phone, this.botLink});
+  final String phone;
+  final String? botLink;
+}
+
+/// Opens a link outside the app (Telegram); replaced in tests.
+final externalLinkOpenerProvider = Provider<Future<bool> Function(Uri)>(
+  (ref) => (uri) => launchUrl(uri, mode: LaunchMode.externalApplication),
+);
+
 String _platform() => kIsWeb
     ? 'web'
     : defaultTargetPlatform == TargetPlatform.iOS
@@ -69,7 +83,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _phone = TextEditingController();
   bool _busy = false;
   String? _error;
-  String? _botLink;
   @override
   void dispose() {
     _phone.dispose();
@@ -84,17 +97,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() {
       _busy = true;
       _error = null;
-      _botLink = null;
     });
     final result = await ref
         .read(authRepositoryProvider)
         .requestOtp(RequestOtpRequest(phone: _normalizePhone(_phone.text)));
     if (!mounted) return;
     result.map(
-        ok: (ok) {
-          setState(() => _botLink = ok.value.botLink);
-          context.push('/otp-verify', extra: _normalizePhone(_phone.text));
-        },
+        ok: (ok) => context.push('/otp-verify',
+            extra: OtpRouteArgs(
+                phone: _normalizePhone(_phone.text),
+                botLink: ok.value.botLink)),
         err: (err) => setState(() => _error = _errorText(err.error.code)));
     setState(() => _busy = false);
   }
@@ -105,7 +117,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final offline = connected == false;
     return _AuthScaffold(
         title: 'INICIAR SESIÓN',
-        subtitle: 'Te enviaremos un código para continuar.',
+        subtitle: TelegramStrings.codeByTelegram,
         children: [
           TextField(
               controller: _phone,
@@ -120,11 +132,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           FilledButton(
               onPressed: _busy || offline ? null : _send,
               child: Text(_busy ? 'Enviando…' : 'Enviar código')),
-          if (_botLink != null)
-            TextButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.send),
-                label: const Text('Vincular por Telegram')),
           TextButton(
               onPressed: () => context.go('/register'),
               child: const Text('Crear una cuenta')),
@@ -184,8 +191,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             consentVersion: AppConfig.privacyPolicyVersion));
     if (!mounted) return;
     result.map(
-        ok: (_) => context.push('/otp-verify?providerSetup=true',
-            extra: _normalizePhone(_phone.text)),
+        ok: (ok) => context.push('/otp-verify?providerSetup=true',
+            extra: OtpRouteArgs(
+                phone: _normalizePhone(_phone.text),
+                botLink: ok.value.botLink)),
         err: (err) => setState(() => _error = _errorText(err.error.code)));
     setState(() => _busy = false);
   }
@@ -196,7 +205,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final offline = connected == false;
     return _AuthScaffold(
         title: 'CREAR CUENTA',
-        subtitle: 'Conecta tu trabajo con nuevas oportunidades.',
+        subtitle:
+            'Conecta tu trabajo con nuevas oportunidades. ${TelegramStrings.codeByTelegram}',
         children: [
           TextField(
               controller: _name,
@@ -237,8 +247,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               contentPadding: EdgeInsets.zero,
               value: _consent,
               onChanged: (v) => setState(() => _consent = v ?? false),
-              title: const Text(
-                  'Acepto el aviso de privacidad ${AppConfig.privacyPolicyVersion}')),
+              title: const Text(TelegramStrings.privacyConsent)),
           Wrap(
             spacing: 4,
             children: [
@@ -276,10 +285,14 @@ class OtpVerifyScreen extends ConsumerStatefulWidget {
   const OtpVerifyScreen({
     required this.phone,
     this.providerSetup = false,
+    this.botLink,
     super.key,
   });
   final String phone;
   final bool providerSetup;
+
+  /// Bot that delivers the code; without it the screen only asks for the code.
+  final String? botLink;
   @override
   ConsumerState<OtpVerifyScreen> createState() => _OtpVerifyScreenState();
 }
@@ -287,7 +300,45 @@ class OtpVerifyScreen extends ConsumerStatefulWidget {
 class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
   final _code = TextEditingController();
   bool _busy = false;
+  bool _resending = false;
   String? _error;
+  String? _notice;
+  late String? _botLink = widget.botLink;
+
+  @override
+  void dispose() {
+    _code.dispose();
+    super.dispose();
+  }
+
+  Future<void> _openBot() async {
+    final link = _botLink;
+    final uri = link == null ? null : Uri.tryParse(link);
+    final opened =
+        uri != null && await ref.read(externalLinkOpenerProvider)(uri);
+    if (!mounted || opened) return;
+    setState(() => _error = TelegramStrings.cannotOpen);
+  }
+
+  Future<void> _resend() async {
+    setState(() {
+      _resending = true;
+      _error = null;
+      _notice = null;
+    });
+    final result = await ref
+        .read(authRepositoryProvider)
+        .requestOtp(RequestOtpRequest(phone: widget.phone));
+    if (!mounted) return;
+    result.map(
+        ok: (ok) => setState(() {
+              _botLink = ok.value.botLink ?? _botLink;
+              _notice = TelegramStrings.resent;
+            }),
+        err: (err) => setState(() => _error = _errorText(err.error.code)));
+    setState(() => _resending = false);
+  }
+
   Future<void> _verify() async {
     if (!RegExp(r'^\d{6}$').hasMatch(_code.text)) return;
     setState(() {
@@ -328,6 +379,10 @@ class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
         title: 'VERIFICA TU CELULAR',
         subtitle: 'Ingresa el código que enviamos a ${widget.phone}.',
         children: [
+          if (_botLink != null) ...[
+            _TelegramSteps(onOpen: offline ? null : _openBot),
+            const SizedBox(height: 18),
+          ],
           TextField(
               controller: _code,
               keyboardType: TextInputType.number,
@@ -343,6 +398,9 @@ class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
                 if (!offline && value.length == 6) _verify();
               }),
           if (_error != null) _ErrorText(_error!),
+          if (_notice != null)
+            Padding(
+                padding: const EdgeInsets.only(top: 8), child: Text(_notice!)),
           const SizedBox(height: 16),
           if (offline) const _OfflineNotice(),
           FilledButton(
@@ -350,10 +408,42 @@ class _OtpVerifyScreenState extends ConsumerState<OtpVerifyScreen> {
                   _busy || offline || _code.text.length != 6 ? null : _verify,
               child: Text(_busy ? 'Verificando…' : 'Verificar')),
           TextButton(
+              onPressed: _resending || offline ? null : _resend,
+              child: const Text(TelegramStrings.resend)),
+          TextButton(
               onPressed: () => context.go('/login'),
               child: const Text('Cambiar número')),
         ]);
   }
+}
+
+class _TelegramSteps extends StatelessWidget {
+  const _TelegramSteps({required this.onOpen});
+  final VoidCallback? onOpen;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(TelegramStrings.title,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          const Text(TelegramStrings.stepOpen),
+          const Text(TelegramStrings.stepShare),
+          const Text(TelegramStrings.stepCode),
+          const SizedBox(height: 6),
+          Text(TelegramStrings.alreadyLinked,
+              style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+              onPressed: onOpen,
+              icon: const Icon(Icons.send),
+              label: const Text(TelegramStrings.openBot)),
+        ],
+      );
 }
 
 class _OfflineNotice extends StatelessWidget {

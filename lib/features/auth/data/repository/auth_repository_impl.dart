@@ -28,10 +28,11 @@ class AuthRepositoryImpl implements AuthRepository, LocalAccountRepository {
       {required this.remote, required this.db, required this.secureStorage});
 
   @override
-  Future<Result<void, DomainFailure>> register(RegisterRequest request) async {
+  Future<Result<RequestOtpResponse, DomainFailure>> register(
+      RegisterRequest request) async {
     try {
-      await remote.register(request.toJson());
-      return const Ok(null);
+      final data = await remote.register(request.toJson());
+      return Ok(RequestOtpResponse.fromJson(data));
     } on DomainFailure catch (e) {
       return Err(e);
     } on DioException catch (e) {

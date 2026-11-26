@@ -69,6 +69,22 @@ abstract final class SyncStrings {
       'Última sincronización exitosa: ${value.toLocal()}';
 }
 
+abstract final class TelegramStrings {
+  static const codeByTelegram = 'Te enviaremos el código por Telegram.';
+  static const title = 'Tu código llega por Telegram';
+  static const stepOpen = '1. Abre el bot de TRACOP en Telegram.';
+  static const stepShare = '2. Pulsa «Compartir mi contacto».';
+  static const stepCode = '3. El bot te envía el código: escríbelo aquí.';
+  static const alreadyLinked =
+      'Si ya vinculaste Telegram, el código llega a ese chat.';
+  static const openBot = 'Abrir Telegram';
+  static const resend = 'Reenviar código';
+  static const resent = 'Te enviamos un código nuevo por Telegram.';
+  static const cannotOpen =
+      'No pudimos abrir Telegram. Instálalo y vuelve a intentarlo.';
+  static const privacyConsent = 'Acepto el aviso de privacidad';
+}
+
 abstract final class SessionStrings {
   static const expired = 'Tu sesión venció. Ingresa de nuevo para continuar.';
   static const testMode =

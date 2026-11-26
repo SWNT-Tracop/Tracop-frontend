@@ -40,3 +40,7 @@ windows/flutter/ephemeral/
 *.log
 .DS_Store
 package_config.json
+
+# Android release signing (never commit)
+*.jks
+*.keystore
