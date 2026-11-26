@@ -32,6 +32,7 @@ import '../features/payments/presentation/screens/payment_review_inbox_screen.da
 import '../features/payments/presentation/screens/payments_dashboard_screen.dart';
 import '../features/payments/presentation/screens/settlements_screen.dart';
 import '../features/payments/presentation/screens/staff_payment_detail_screen.dart';
+import '../features/backoffice/presentation/backoffice_screen.dart';
 
 final router = GoRouter(
   initialLocation: '/splash',
@@ -87,6 +88,62 @@ final router = GoRouter(
             context,
             state,
             const NotificationsScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/backoffice/resumen',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const StaffRoleGate(
+                child: BackofficeScreen(section: BackofficeSection.dashboard)),
+          ),
+        ),
+        GoRoute(
+          path: '/backoffice/verificaciones',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const StaffRoleGate(
+                child:
+                    BackofficeScreen(section: BackofficeSection.verifications)),
+          ),
+        ),
+        GoRoute(
+          path: '/backoffice/propuestas',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const StaffRoleGate(
+                child: BackofficeScreen(section: BackofficeSection.proposals)),
+          ),
+        ),
+        GoRoute(
+          path: '/backoffice/logistica',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const StaffRoleGate(
+                child: BackofficeScreen(section: BackofficeSection.logistics)),
+          ),
+        ),
+        GoRoute(
+          path: '/backoffice/parametros',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const StaffRoleGate(
+                child: BackofficeScreen(section: BackofficeSection.parameters)),
+          ),
+        ),
+        GoRoute(
+          path: '/backoffice/auditoria',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const StaffRoleGate(
+                roles: {'admin'},
+                child: BackofficeScreen(section: BackofficeSection.audit)),
           ),
         ),
         GoRoute(
@@ -374,6 +431,24 @@ class CarrierRoleGate extends ConsumerWidget {
       return const Center(child: CircularProgressIndicator());
     }
     return user?.role == 'carrier' ? child : const NotFoundScreen();
+  }
+}
+
+class StaffRoleGate extends ConsumerWidget {
+  const StaffRoleGate(
+      {required this.child,
+      this.roles = const {'operator', 'finance', 'admin'},
+      super.key});
+  final Widget child;
+  final Set<String> roles;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider);
+    if (auth.isLoading) return const Center(child: CircularProgressIndicator());
+    return roles.contains(auth.valueOrNull?.user.role)
+        ? child
+        : const NotFoundScreen();
   }
 }
 

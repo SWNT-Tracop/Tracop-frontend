@@ -39,6 +39,9 @@ import 'features/notifications/presentation/notifications_provider.dart';
 import 'features/trust/data/trust_remote.dart';
 import 'features/trust/data/trust_repository.dart';
 import 'features/trust/presentation/trust_provider.dart';
+import 'features/backoffice/data/backoffice_remote.dart';
+import 'features/backoffice/data/backoffice_repository.dart';
+import 'features/backoffice/presentation/backoffice_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -114,6 +117,9 @@ Future<void> main() async {
         ),
         trustRepositoryProvider.overrideWithValue(
           TrustRepository(remote: TrustRemoteDataSource(dioClient)),
+        ),
+        backofficeRepositoryProvider.overrideWithValue(
+          BackofficeRepository(remote: BackofficeRemoteDataSource(dioClient)),
         ),
       ],
       child: const TracopApp(),

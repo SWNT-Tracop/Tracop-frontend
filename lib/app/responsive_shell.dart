@@ -81,7 +81,20 @@ class ResponsiveShell extends ConsumerWidget {
   List<({String path, String label, IconData icon})> _destinationsFor(
           String? role) =>
       PaymentPermissions.isStaff(role)
-          ? _staffDestinations
+          ? [
+              ..._staffDestinations.take(3),
+              const (
+                path: '/backoffice/resumen',
+                label: 'Operación',
+                icon: Icons.dashboard_outlined
+              ),
+              const (
+                path: '/backoffice/verificaciones',
+                label: 'Confianza',
+                icon: Icons.verified_user_outlined
+              ),
+              _staffDestinations[3],
+            ]
           : role == 'carrier'
               ? const [
                   (
