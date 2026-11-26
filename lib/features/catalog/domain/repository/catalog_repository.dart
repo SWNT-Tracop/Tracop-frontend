@@ -5,6 +5,26 @@ import '../entities/category.dart';
 import '../entities/lot.dart' hide Category, Product;
 import '../entities/product.dart';
 
+class PendingPhotoStatus {
+  const PendingPhotoStatus({
+    required this.photoId,
+    required this.state,
+    required this.attempts,
+    required this.nextAttemptAt,
+    this.lastError,
+  });
+
+  final String photoId;
+  final String state;
+  final int attempts;
+  final DateTime nextAttemptAt;
+  final String? lastError;
+}
+
+abstract interface class PendingPhotoStatusReader {
+  Future<List<PendingPhotoStatus>> pendingLotPhotoStatuses(String lotId);
+}
+
 abstract class CatalogRepository {
   Future<Result<List<Category>, DomainFailure>> getCategories();
   Future<Result<List<Product>, DomainFailure>> getProducts(
@@ -44,4 +64,6 @@ abstract class CatalogRepository {
       String lotId, String photoId);
   Future<Result<List<LotPhoto>, DomainFailure>> reorderLotPhotos(
       String lotId, List<String> photoIds);
+
+  Future<void> syncPendingLotPhotos();
 }

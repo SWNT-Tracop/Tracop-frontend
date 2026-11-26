@@ -1,43 +1,76 @@
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/config/env.dart';
+import '../../../core/network/network_status.dart';
+import '../../../core/sync/sync_provider.dart';
+import '../../../core/i18n/strings.dart';
 import '../../../shared/widgets/lot_interaction_widgets.dart';
 import '../../auth/domain/entities/user.dart';
-import '../../auth/presentation/providers/auth_provider.dart';
+import '../../auth/presentation/providers/auth_provider.dart'
+    show authProvider, authRepositoryProvider;
 import '../../catalog/domain/entities/lot.dart' hide Category, Product;
 import '../../catalog/presentation/providers/catalog_provider.dart';
 import '../../catalog/presentation/providers/lot_management_provider.dart'
     show catalogProductsProvider;
 
-final homeLotsCacheProvider = StateProvider<List<Lot>?>((ref) => null);
+class HomeLotsCache {
+  const HomeLotsCache({required this.userId, required this.lots});
+
+  final String userId;
+  final List<Lot> lots;
+}
+
+final homeLotsCacheProvider = StateProvider<HomeLotsCache?>((ref) => null);
 
 final homeUserProvider = FutureProvider<User?>((ref) async {
+  // Re-read the account after login, OTP verification, or local account switch.
+  // Without this dependency the UI could keep the previous role while Dio used
+  // the new account's access token.
+  ref.watch(authProvider);
   final result = await ref.read(authRepositoryProvider).getStoredUser();
   return result.map(ok: (value) => value.value, err: (_) => null);
 });
 
 final homeLotsProvider = FutureProvider<List<Lot>>((ref) async {
-  final result = await ref.read(catalogRepositoryProvider).getMyLots();
-  return result.map(
-    ok: (value) {
-      ref.read(homeLotsCacheProvider.notifier).state = value.value;
-      return value.value;
-    },
-    err: (failure) => throw failure,
-  );
+  ref.watch(syncRevisionProvider);
+  final user = await ref.watch(homeUserProvider.future);
+  if (user == null || user.role == 'carrier') return const <Lot>[];
+  final repository = ref.read(catalogRepositoryProvider);
+  final List<Lot> items;
+  if (user.role == 'producer' || user.role == 'supplier') {
+    final result = await repository.getMyLots();
+    items = result.map(
+      ok: (value) => value.value,
+      err: (failure) {
+        ref.read(catalogReadErrorProvider.notifier).state = failure.error.code;
+        throw failure.error;
+      },
+    );
+  } else {
+    final result = await repository.searchLots(limit: 5, sort: 'recent');
+    items = result.map(
+      ok: (value) => value.value.items,
+      err: (failure) {
+        ref.read(catalogReadErrorProvider.notifier).state = failure.error.code;
+        throw failure.error;
+      },
+    );
+  }
+  ref.read(catalogReadErrorProvider.notifier).state = null;
+  ref.read(homeLotsCacheProvider.notifier).state =
+      HomeLotsCache(userId: user.id, lots: items);
+  return items;
 });
 
 final homeConnectivityProvider = StreamProvider<bool>((ref) async* {
-  final connectivity = Connectivity();
-  bool isConnected(List<ConnectivityResult> results) =>
-      results.any((result) => result != ConnectivityResult.none);
-
-  yield isConnected(await connectivity.checkConnectivity());
-  yield* connectivity.onConnectivityChanged.map(isConnected);
+  yield await hasServerConnection(AppConfig.apiBaseUrl);
+  await for (final _ in Stream<void>.periodic(const Duration(seconds: 10))) {
+    yield await hasServerConnection(AppConfig.apiBaseUrl);
+  }
 });
 
 class HomeScreen extends ConsumerWidget {
@@ -46,6 +79,7 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(homeUserProvider).valueOrNull;
+    if (user?.role == 'carrier') return const _CarrierLanding();
     final lots = ref.watch(homeLotsProvider);
     final cachedLots = ref.watch(homeLotsCacheProvider);
     final products = ref.watch(catalogProductsProvider).valueOrNull ?? const [];
@@ -53,7 +87,8 @@ class HomeScreen extends ConsumerWidget {
       for (final product in products) product.id: product.name
     };
     final connectivity = ref.watch(homeConnectivityProvider).valueOrNull;
-    final items = lots.valueOrNull ?? cachedLots;
+    final items = lots.valueOrNull ??
+        (cachedLots?.userId == user?.id ? cachedLots?.lots : null);
     final isSeller = user?.role == 'producer' || user?.role == 'supplier';
     final displayName = user?.fullName.trim().split(RegExp(r'\s+')).firstOrNull;
     final greeting = _greeting(DateTime.now(), displayName);
@@ -104,6 +139,7 @@ class HomeScreen extends ConsumerWidget {
                       if (lots.hasError && connectivity != false) ...[
                         const SizedBox(height: 20),
                         _LoadErrorNotice(
+                          errorCode: ref.watch(catalogReadErrorProvider),
                           onRetry: () => ref.invalidate(homeLotsProvider),
                         ),
                       ],
@@ -123,6 +159,7 @@ class HomeScreen extends ConsumerWidget {
                         _RecentLotActivity(
                             lots: items,
                             productNames: productNames,
+                            isBuyer: user?.role == 'buyer',
                             onLotTap: (id) => context.go('/lots/$id'),
                             onViewAll: () => context.go('/buscar')),
                       ],
@@ -136,6 +173,46 @@ class HomeScreen extends ConsumerWidget {
       },
     );
   }
+}
+
+class _CarrierLanding extends StatelessWidget {
+  const _CarrierLanding();
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+        color: AppTheme.background,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Icon(Icons.local_shipping_outlined,
+                      size: 52, color: AppTheme.carrierAccent),
+                  const SizedBox(height: 20),
+                  Text(LogisticsStrings.homeHeadline,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.headlineMedium),
+                  const SizedBox(height: 8),
+                  const Text(
+                    LogisticsStrings.homeDescription,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  FilledButton.icon(
+                    onPressed: () => context.go('/logistica'),
+                    icon: const Icon(Icons.route_outlined),
+                    label: const Text(LogisticsStrings.openLogistics),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
 ({String label, String path}) _primaryAction({
@@ -311,6 +388,7 @@ class _SellerActivity extends StatelessWidget {
                 productName: productNames[recent[index].productId] ??
                     'Producto agropecuario',
                 index: index,
+                isBuyer: false,
                 onTap: () => onLotTap(recent[index].id)),
           Align(
               alignment: Alignment.centerRight,
@@ -397,10 +475,12 @@ class _RecentLotActivity extends StatelessWidget {
   const _RecentLotActivity(
       {required this.lots,
       required this.productNames,
+      required this.isBuyer,
       required this.onLotTap,
       required this.onViewAll});
   final List<Lot> lots;
   final Map<String, String> productNames;
+  final bool isBuyer;
   final ValueChanged<String> onLotTap;
   final VoidCallback onViewAll;
   @override
@@ -408,7 +488,7 @@ class _RecentLotActivity extends StatelessWidget {
     final recent = List<Lot>.of(lots)
       ..sort((a, b) => b.availableFrom.compareTo(a.availableFrom));
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('Actividad reciente',
+      Text(isBuyer ? 'Lotes recientes' : 'Actividad reciente',
           style: Theme.of(context)
               .textTheme
               .titleLarge
@@ -419,7 +499,7 @@ class _RecentLotActivity extends StatelessWidget {
             child: Padding(
                 padding: EdgeInsets.all(20),
                 child: Text(
-                    'Aún no hay actividad. Cuando tengas lotes o pedidos, aparecerán aquí.')))
+                    'Aún no hay lotes disponibles. Explora el catálogo para encontrar una oferta.')))
       else ...[
         for (var i = 0; i < recent.take(5).length; i++)
           _RecentLotActivityItem(
@@ -427,6 +507,7 @@ class _RecentLotActivity extends StatelessWidget {
               productName:
                   productNames[recent[i].productId] ?? 'Producto agropecuario',
               index: i,
+              isBuyer: isBuyer,
               onTap: () => onLotTap(recent[i].id)),
         Align(
             alignment: Alignment.centerRight,
@@ -444,22 +525,28 @@ class _RecentLotActivityItem extends StatelessWidget {
       {required this.lot,
       required this.productName,
       required this.index,
+      required this.isBuyer,
       required this.onTap});
   final Lot lot;
   final String productName;
   final int index;
+  final bool isBuyer;
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) {
     final isDraft = lot.status == 'draft';
     final isCancelled = lot.status == 'cancelled';
-    final action = isDraft
-        ? 'Guardaste borrador'
-        : isCancelled
-            ? 'Cancelaste'
-            : lot.status == 'published'
-                ? 'Publicaste'
-                : 'Estado del lote';
+    final action = isBuyer
+        ? lot.status == 'published'
+            ? 'Disponible'
+            : 'Lote'
+        : isDraft
+            ? 'Guardaste borrador'
+            : isCancelled
+                ? 'Cancelaste'
+                : lot.status == 'published'
+                    ? 'Publicaste'
+                    : 'Estado del lote';
     final amount = (int.tryParse(lot.quantityMilli) ?? 0) / 1000;
     final price =
         NumberFormat.currency(locale: 'es_CO', symbol: r'$ ', decimalDigits: 0)
@@ -528,9 +615,10 @@ class _OfflineNotice extends StatelessWidget {
 }
 
 class _LoadErrorNotice extends StatelessWidget {
-  const _LoadErrorNotice({required this.onRetry});
+  const _LoadErrorNotice({required this.onRetry, this.errorCode});
 
   final VoidCallback onRetry;
+  final String? errorCode;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -546,7 +634,9 @@ class _LoadErrorNotice extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'No pudimos actualizar tus lotes.',
+                errorCode == null
+                    ? 'No pudimos actualizar tus lotes.'
+                    : 'No pudimos actualizar tus lotes ($errorCode).',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: const Color(0xFF553B00),
                       fontSize: 14,

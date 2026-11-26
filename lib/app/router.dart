@@ -10,6 +10,7 @@ import '../features/auth/presentation/profile_screen.dart';
 import '../features/auth/presentation/provider_profile_screen.dart';
 import '../features/auth/presentation/providers/auth_provider.dart';
 import '../features/catalog/presentation/catalog_search_screen.dart';
+import '../features/catalog/domain/entities/lot.dart' hide Category, Product;
 import '../features/catalog/presentation/lot_detail_screen.dart';
 import '../features/catalog/presentation/lot_form_screen.dart';
 import '../features/catalog/presentation/my_lots_screen.dart';
@@ -17,6 +18,23 @@ import '../features/ordering/presentation/screens/order_screens.dart';
 import '../core/config/env.dart';
 import '../core/i18n/strings.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../features/logistics/presentation/logistics_screen.dart';
+import '../features/logistics/presentation/logistics_provider.dart'
+    show logisticsUserProvider;
+import '../features/catalog/presentation/product_proposals_screen.dart';
+import '../features/sync_status/presentation/sync_status_screen.dart';
+import '../features/notifications/presentation/notifications_screen.dart';
+import '../features/payments/domain/payment_permissions.dart';
+import '../features/payments/presentation/screens/buyer_payment_screen.dart';
+import '../features/payments/domain/review_filters.dart';
+import '../features/payments/domain/settlement_filters.dart';
+import '../features/payments/presentation/screens/payment_review_inbox_screen.dart';
+import '../features/payments/presentation/screens/payments_dashboard_screen.dart';
+import '../features/payments/presentation/screens/settlements_screen.dart';
+import '../features/payments/presentation/screens/staff_payment_detail_screen.dart';
+import '../features/backoffice/presentation/backoffice_screen.dart';
+import '../features/recommendations/presentation/recommendations_screen.dart';
+import '../features/recommendations/presentation/pricing_mappings_screen.dart';
 
 final router = GoRouter(
   initialLocation: '/splash',
@@ -31,13 +49,22 @@ final router = GoRouter(
     GoRoute(
         path: '/otp-verify',
         builder: (context, state) => OtpVerifyScreen(
-              phone: state.extra as String? ?? '',
+              phone: switch (state.extra) {
+                OtpRouteArgs(:final phone) => phone,
+                String phone => phone,
+                _ => '',
+              },
+              botLink: switch (state.extra) {
+                OtpRouteArgs(:final botLink) => botLink,
+                _ => null,
+              },
               providerSetup:
                   state.uri.queryParameters['providerSetup'] == 'true',
             )),
     ShellRoute(
       builder: (context, state, child) => AuthenticatedShell(
         currentLocation: state.uri.path,
+        origin: state.uri.queryParameters['desde'],
         child: child,
       ),
       routes: [
@@ -46,7 +73,136 @@ final router = GoRouter(
           pageBuilder: (context, state) => _routePage(
             context,
             state,
-            const HomeScreen(),
+            const StaffLandingRedirect(child: HomeScreen()),
+          ),
+        ),
+        GoRoute(
+          path: '/logistica',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const CarrierRoleGate(child: LogisticsScreen()),
+          ),
+        ),
+        GoRoute(
+          path: '/sincronizacion',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const SyncStatusScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/notificaciones',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const NotificationsScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/recomendaciones',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const RoleGate(
+              roles: {'buyer'},
+              child: RecommendationsScreen(),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/backoffice/precios',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const StaffRoleGate(
+              roles: {'operator', 'admin'},
+              child: PricingMappingsScreen(),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/backoffice/resumen',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const StaffRoleGate(
+                child: BackofficeScreen(section: BackofficeSection.dashboard)),
+          ),
+        ),
+        GoRoute(
+          path: '/backoffice/verificaciones',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const StaffRoleGate(
+                child:
+                    BackofficeScreen(section: BackofficeSection.verifications)),
+          ),
+        ),
+        GoRoute(
+          path: '/backoffice/propuestas',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const StaffRoleGate(
+                child: BackofficeScreen(section: BackofficeSection.proposals)),
+          ),
+        ),
+        GoRoute(
+          path: '/backoffice/catalogo',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const StaffRoleGate(
+                child: BackofficeScreen(section: BackofficeSection.catalog)),
+          ),
+        ),
+        GoRoute(
+          path: '/backoffice/logistica',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const StaffRoleGate(
+                child: BackofficeScreen(section: BackofficeSection.logistics)),
+          ),
+        ),
+        GoRoute(
+          path: '/backoffice/parametros',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const StaffRoleGate(
+                child: BackofficeScreen(section: BackofficeSection.parameters)),
+          ),
+        ),
+        GoRoute(
+          path: '/backoffice/auditoria',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const StaffRoleGate(
+                roles: {'admin'},
+                child: BackofficeScreen(section: BackofficeSection.audit)),
+          ),
+        ),
+        GoRoute(
+          path: '/catalogo/propuestas',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const ProductProposalsScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/logistica/viajes/:id',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            CarrierRoleGate(
+              child: TripDetailScreen(tripId: state.pathParameters['id']!),
+            ),
           ),
         ),
         GoRoute(
@@ -96,9 +252,11 @@ final router = GoRouter(
           pageBuilder: (context, state) => _orderRoutePage(
             context,
             state,
-            const OrderRoleGate(
-              roles: {'buyer'},
-              child: OrderCheckoutScreen(),
+            OrderRoleGate(
+              roles: const {'buyer'},
+              child: OrderCheckoutScreen(
+                initialLot: state.extra is Lot ? state.extra as Lot : null,
+              ),
             ),
           ),
         ),
@@ -116,8 +274,19 @@ final router = GoRouter(
             context,
             state,
             const OrderRoleGate(
-              roles: {'supplier'},
+              roles: {'producer', 'supplier'},
               child: IncomingOrdersScreen(),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/pedidos/:id/pago',
+          pageBuilder: (context, state) => _orderRoutePage(
+            context,
+            state,
+            OrderRoleGate(
+              roles: const {'buyer'},
+              child: BuyerPaymentScreen(orderId: state.pathParameters['id']!),
             ),
           ),
         ),
@@ -127,8 +296,77 @@ final router = GoRouter(
             context,
             state,
             OrderRoleGate(
-              roles: const {'buyer', 'supplier'},
+              roles: const {'buyer', 'producer', 'supplier'},
               child: OrderDetailScreen(orderId: state.pathParameters['id']!),
+            ),
+          ),
+        ),
+        // Personal TRACOP: todas las rutas bajo /pagos/ con la misma
+        // compuerta de rol. Las rutas fijas van antes de /pagos/:id.
+        GoRoute(
+          path: '/pagos/resumen',
+          pageBuilder: (context, state) => _orderRoutePage(
+            context,
+            state,
+            const OrderRoleGate(
+              roles: PaymentPermissions.staffRoles,
+              child: PaymentsDashboardScreen(),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/pagos/revision',
+          pageBuilder: (context, state) {
+            // ?filtro=comprobantes|disputas (accesos del resumen).
+            final filter = state.uri.queryParameters['filtro'];
+            return _orderRoutePage(
+              context,
+              state,
+              OrderRoleGate(
+                roles: PaymentPermissions.staffRoles,
+                child: PaymentReviewInboxScreen(
+                  key: ValueKey('revision-$filter'),
+                  initialFilters: ReviewFilters.fromQuery(filter),
+                ),
+              ),
+            );
+          },
+        ),
+        GoRoute(
+          path: '/pagos/liquidaciones',
+          pageBuilder: (context, state) {
+            // ?estado=emitidas|pagadas|todas&pago=<id de pago>
+            final status = state.uri.queryParameters['estado'];
+            final paymentId = state.uri.queryParameters['pago'] ?? '';
+            return _orderRoutePage(
+              context,
+              state,
+              OrderRoleGate(
+                roles: PaymentPermissions.staffRoles,
+                child: SettlementsScreen(
+                  key: ValueKey('liquidaciones-$status-$paymentId'),
+                  initialStatus: SettlementStatusFilter.fromQuery(status,
+                      fallback: paymentId.isEmpty
+                          ? SettlementStatusFilter.issued
+                          : SettlementStatusFilter.all),
+                  initialQuery: paymentId,
+                ),
+              ),
+            );
+          },
+        ),
+        GoRoute(
+          path: '/pagos/:id',
+          pageBuilder: (context, state) => _orderRoutePage(
+            context,
+            state,
+            OrderRoleGate(
+              roles: PaymentPermissions.staffRoles,
+              child: StaffPaymentDetailScreen(
+                paymentId: state.pathParameters['id']!,
+                fromSettlements:
+                    state.uri.queryParameters['desde'] == 'liquidaciones',
+              ),
             ),
           ),
         ),
@@ -153,8 +391,14 @@ final router = GoRouter(
 
 class AuthenticatedShell extends ConsumerWidget {
   const AuthenticatedShell(
-      {required this.currentLocation, required this.child, super.key});
+      {required this.currentLocation,
+      required this.child,
+      this.origin,
+      super.key});
   final String currentLocation;
+
+  /// Sección de origen (`?desde=`), para resaltar el destino correcto.
+  final String? origin;
   final Widget child;
 
   @override
@@ -174,6 +418,7 @@ class AuthenticatedShell extends ConsumerWidget {
         !notifier.isAuthenticated;
     return ResponsiveShell(
       currentLocation: currentLocation,
+      origin: origin,
       child: bypassSession
           ? Column(
               children: [
@@ -192,6 +437,74 @@ class AuthenticatedShell extends ConsumerWidget {
             )
           : child,
     );
+  }
+}
+
+/// El personal TRACOP no tiene un inicio propio: `/` lo lleva al resumen
+/// de pagos. Es un widget (como `CarrierRoleGate`) porque el rol vive en
+/// Riverpod y el `GoRouter` global no tiene acceso a él.
+class StaffLandingRedirect extends ConsumerWidget {
+  const StaffLandingRedirect({required this.child, super.key});
+  final Widget child;
+
+  static const staffHome = '/pagos/resumen';
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final role = ref.watch(homeUserProvider).valueOrNull?.role;
+    if (!PaymentPermissions.isStaff(role)) return child;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (context.mounted) context.go(staffHome);
+    });
+    return const Center(child: CircularProgressIndicator());
+  }
+}
+
+class CarrierRoleGate extends ConsumerWidget {
+  const CarrierRoleGate({required this.child, super.key});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider);
+    final user = ref.watch(logisticsUserProvider);
+    if (auth.isLoading && user == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return user?.role == 'carrier' ? child : const NotFoundScreen();
+  }
+}
+
+class StaffRoleGate extends ConsumerWidget {
+  const StaffRoleGate(
+      {required this.child,
+      this.roles = const {'operator', 'finance', 'admin'},
+      super.key});
+  final Widget child;
+  final Set<String> roles;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider);
+    if (auth.isLoading) return const Center(child: CircularProgressIndicator());
+    return roles.contains(auth.valueOrNull?.user.role)
+        ? child
+        : const NotFoundScreen();
+  }
+}
+
+class RoleGate extends ConsumerWidget {
+  const RoleGate({required this.roles, required this.child, super.key});
+  final Set<String> roles;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider);
+    if (auth.isLoading) return const Center(child: CircularProgressIndicator());
+    return roles.contains(auth.valueOrNull?.user.role)
+        ? child
+        : const NotFoundScreen();
   }
 }
 

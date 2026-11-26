@@ -7,6 +7,7 @@ import '../../../core/config/catalog_config.dart';
 import '../../../core/i18n/formats.dart';
 import '../../../core/i18n/strings.dart';
 import '../../../core/result/result.dart';
+import '../../../shared/widgets/provider_trust.dart';
 import '../../auth/presentation/providers/auth_provider.dart';
 import '../../home/presentation/home_screen.dart';
 import '../domain/entities/lot.dart' hide Category, Product;
@@ -179,6 +180,12 @@ class LotDetailScreen extends ConsumerWidget {
                             icon: Icons.person_outline,
                             label: _S.provider,
                             value: item.provider!.displayName),
+                        const SizedBox(height: 10),
+                        ProviderTrustSummary(
+                          verified: item.provider!.verified,
+                          rating: item.provider!.rating,
+                          ratingsCount: item.provider!.ratingsCount,
+                        ),
                       ]),
                     ],
                     const SizedBox(height: 20),
@@ -187,6 +194,18 @@ class LotDetailScreen extends ConsumerWidget {
                             .textTheme
                             .bodyMedium
                             ?.copyWith(color: AppTheme.mutedText)),
+                    if (role == 'buyer' && !item.isMine) ...[
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        height: 52,
+                        child: FilledButton.icon(
+                          onPressed: () =>
+                              context.push('/pedidos/nuevo', extra: item),
+                          icon: const Icon(Icons.shopping_bag_outlined),
+                          label: const Text('Comprar este lote'),
+                        ),
+                      ),
+                    ],
                   ],
                 );
               },

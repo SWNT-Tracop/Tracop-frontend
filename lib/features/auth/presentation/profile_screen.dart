@@ -6,9 +6,23 @@ import 'package:go_router/go_router.dart';
 import '../../../app/motion.dart';
 import '../../../app/theme.dart';
 import '../../../core/i18n/strings.dart';
+import '../../../core/config/env.dart';
+import '../../../core/result/result.dart';
 import '../../../shared/widgets/profile_widgets.dart';
 import '../../home/presentation/home_screen.dart'
-    show homeConnectivityProvider, homeUserProvider;
+    show
+        homeConnectivityProvider,
+        homeLotsCacheProvider,
+        homeLotsProvider,
+        homeUserProvider;
+import '../../catalog/presentation/providers/lot_management_provider.dart'
+    show localLotModifiedAtProvider, lotByIdProvider, myLotsProvider;
+import '../../ordering/presentation/providers/order_provider.dart'
+    show
+        incomingOrdersProvider,
+        myOrdersProvider,
+        orderDetailProvider,
+        orderLotsProvider;
 import '../domain/entities/auth_session.dart';
 import '../domain/entities/user.dart';
 import 'providers/auth_provider.dart';
@@ -26,6 +40,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   User? _user;
   UpsertProviderProfileRequest? _providerProfile;
   bool _loading = true, _saving = false, _loggingOut = false;
+  bool _accountBusy = false;
   bool _telegramNotices = true,
       _smsNotices = true,
       _localPreferencesChanged = false;
@@ -106,6 +121,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           content: Text(message)));
   }
 
+  void _invalidateAccountData() {
+    ref.invalidate(homeUserProvider);
+    ref.invalidate(homeLotsCacheProvider);
+    ref.invalidate(homeLotsProvider);
+    ref.invalidate(myLotsProvider);
+    ref.invalidate(lotByIdProvider);
+    ref.invalidate(localLotModifiedAtProvider);
+    ref.invalidate(myOrdersProvider);
+    ref.invalidate(incomingOrdersProvider);
+    ref.invalidate(orderDetailProvider);
+    ref.invalidate(orderLotsProvider);
+  }
+
   Future<void> _logout(bool offline) async {
     final body = (offline
             ? ProfileStrings.logoutOfflineBody
@@ -127,8 +155,150 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (confirmed != true || !mounted) return;
     setState(() => _loggingOut = true);
     await ref.read(authProvider.notifier).logout();
-    ref.invalidate(homeUserProvider);
+    _invalidateAccountData();
     if (mounted) context.go('/login');
+  }
+
+  Future<void> _manageLocalAccounts() async {
+    final accounts = await ref.read(authProvider.notifier).getSavedAccounts();
+    if (!mounted) return;
+    final action =
+        await showModalBottomSheet<({String? userId, bool add, bool remove})>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => SizedBox(
+        height: MediaQuery.sizeOf(sheetContext).height * 0.68,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(ProfileStrings.savedAccounts,
+                  style: Theme.of(sheetContext).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: accounts.length + 1,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    if (index == accounts.length) {
+                      return ListTile(
+                        leading: const Icon(Icons.person_add_alt_1_outlined),
+                        title: const Text(ProfileStrings.addLocalAccount),
+                        onTap: () => Navigator.pop(sheetContext,
+                            (userId: null, add: true, remove: false)),
+                      );
+                    }
+                    final account = accounts[index];
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                      leading: CircleAvatar(
+                        backgroundColor: account.isActive
+                            ? AppTheme.mint
+                            : AppTheme.neutralSurface,
+                        child: Icon(
+                            account.isActive
+                                ? Icons.check
+                                : Icons.person_outline,
+                            color: AppTheme.forest),
+                      ),
+                      title: Text(
+                        account.user.fullName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        '${account.user.phone} · ${RoleStrings.label(account.user.role)}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                        if (account.isActive)
+                          const Icon(Icons.radio_button_checked,
+                              color: AppTheme.forest),
+                        IconButton(
+                          tooltip: ProfileStrings.removeLocalAccount,
+                          onPressed: () => Navigator.pop(sheetContext, (
+                            userId: account.user.id,
+                            add: false,
+                            remove: true
+                          )),
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                      ]),
+                      onTap: account.isActive
+                          ? null
+                          : () => Navigator.pop(sheetContext, (
+                                userId: account.user.id,
+                                add: false,
+                                remove: false
+                              )),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (action == null || !mounted) return;
+    if (action.add) {
+      context.push('/login?addAccount=true');
+      return;
+    }
+    final userId = action.userId;
+    if (userId == null) return;
+    final wasActive = accounts
+        .any((account) => account.user.id == userId && account.isActive);
+    if (action.remove) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text(ProfileStrings.removeLocalAccountTitle),
+          content: const Text(ProfileStrings.removeLocalAccountBody),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text(CommonStrings.cancel)),
+            FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text(ProfileStrings.removeLocalAccount)),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      setState(() => _accountBusy = true);
+      await ref.read(authProvider.notifier).removeSavedAccount(userId);
+      if (!mounted) return;
+      if (wasActive) _invalidateAccountData();
+      if (wasActive) {
+        context.go('/login');
+      } else {
+        _notify(ProfileStrings.accountRemoved);
+      }
+      setState(() => _accountBusy = false);
+      return;
+    }
+    setState(() => _accountBusy = true);
+    final result =
+        await ref.read(authProvider.notifier).activateSavedAccount(userId);
+    if (!mounted) return;
+    final activatedOffline = result is Err<AuthSession, DomainFailure> &&
+        result.error.code == 'offline_account_activated';
+    if (result is Ok<AuthSession, DomainFailure> || activatedOffline) {
+      _invalidateAccountData();
+      _notify(ProfileStrings.accountSwitched);
+      context.go('/');
+    } else {
+      final error = (result as Err<AuthSession, DomainFailure>).error;
+      _notify(error.code == 'network_error'
+          ? ProfileStrings.offlineEditHint
+          : error.message);
+    }
+    if (mounted) setState(() => _accountBusy = false);
   }
 
   @override
@@ -247,6 +417,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   title: const Text(ProfileStrings.phone),
                   subtitle: Text(user.phone))
             ]),
+            if (AppConfig.canUseLocalMultiAccount) ...[
+              const SizedBox(height: 16),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.switch_account_outlined),
+                  title: const Text(ProfileStrings.localAccounts),
+                  subtitle: const Text(ProfileStrings.localAccountsHint),
+                  trailing: _accountBusy
+                      ? const SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.chevron_right),
+                  onTap: _accountBusy ? null : _manageLocalAccounts,
+                ),
+              ),
+            ],
             if (producer) ...[
               const SizedBox(height: 18),
               Card(

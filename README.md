@@ -90,7 +90,8 @@ El segundo comando genera el código de Drift para la base local.
 ```bash
 flutter run \
   --dart-define=API_BASE_URL=http://10.0.2.2:3000 \
-  --dart-define=PRIVACY_POLICY_VERSION=v0-draft
+  --dart-define=PRIVACY_POLICY_VERSION=v0-draft \
+  --dart-define=ENABLE_LOCAL_MULTI_ACCOUNT=true
 ```
 
 Para el simulador de iOS, usa el host del Mac:
@@ -98,7 +99,8 @@ Para el simulador de iOS, usa el host del Mac:
 ```bash
 flutter run \
   --dart-define=API_BASE_URL=http://localhost:3000 \
-  --dart-define=PRIVACY_POLICY_VERSION=v0-draft
+  --dart-define=PRIVACY_POLICY_VERSION=v0-draft \
+  --dart-define=ENABLE_LOCAL_MULTI_ACCOUNT=true
 ```
 
 Direcciones según el entorno:
@@ -121,11 +123,35 @@ flutter build ipa --release \
   --dart-define=API_BASE_URL=https://api.tracop.co
 ```
 
+### APK automático en cada merge a `main`
+
+`.github/workflows/deploy.yml` corre `analyze` y `test`, compila el APK firmado y lo publica como GitHub Release `build-<n>` (`tracop-build-<n>.apk`). El número de versión sube en cada build, así que el APK nuevo se instala encima del anterior.
+
+**Configuración del repositorio** (Settings → Secrets and variables → Actions):
+
+| Tipo | Nombre | Valor |
+| --- | --- | --- |
+| Variable | `API_BASE_URL` | URL HTTPS del backend desplegado |
+| Variable | `PRIVACY_POLICY_VERSION` | La misma versión que la API; si falta, `v0-draft` |
+| Secreto | `ANDROID_KEYSTORE_BASE64` | El `.jks` en base64 |
+| Secreto | `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | Los de la clave |
+
+**Crear la clave una sola vez**, fuera del repositorio y guardándola en un lugar seguro. Si se pierde, los celulares tendrán que desinstalar la app para instalar la siguiente versión.
+
+```bash
+keytool -genkeypair -v -keystore tracop-release.jks -alias tracop \
+  -keyalg RSA -keysize 4096 -validity 10000
+base64 -w0 tracop-release.jks   # valor de ANDROID_KEYSTORE_BASE64
+```
+
+Para firmar en local, crea `android/key.properties` (ignorado por git) con `storeFile`, `storePassword`, `keyAlias` y `keyPassword`. Sin ese archivo, `flutter build apk --release` firma con la clave debug.
+
 ### Variables de compilación
 
 | Variable | Uso |
 | --- | --- |
 | `API_BASE_URL` | URL base del backend |
+| `ENABLE_LOCAL_MULTI_ACCOUNT` | Muestra el selector de sesiones de prueba (solo debug; `true` para habilitarlo) |
 | `PRIVACY_POLICY_VERSION` | Versión del aviso de privacidad aceptada |
 | `LOG_LEVEL` | Nivel de logs de la app |
 
@@ -223,6 +249,62 @@ Las pruebas cubren:
 ## Contratos
 
 La integración HTTP está documentada en [docs/contracts.md](docs/contracts.md): endpoints, modelos, permisos, errores, límites y ejemplos de request/response.
+
+---
+
+## Despliegue
+
+La app es un **cliente grueso offline-first**: SQLite es la fuente de lectura, cada mutación se escribe primero en local y se encola, y un motor de sync hace push/pull contra el backend cuando hay conexión. En el despliegue, la app se compila contra la URL del backend (`API_BASE_URL`) y se distribuye en dos formatos: **APK** para Android y **Flutter Web** para el navegador.
+
+### Arquitectura (cliente grueso)
+
+```mermaid
+flowchart LR
+    subgraph DEV["📱 Dispositivo — cliente grueso"]
+        UI["UI Flutter + Riverpod"]
+        SQLITE[("SQLite (Drift)<br/>fuente de lectura local")]
+        OUTBOX["Outbox local<br/>cola de operaciones (opId)"]
+        SYNC["Motor de sync<br/>push/pull + backoff"]
+        CACHE["Caché catálogo/búsqueda"]
+        SEC["Secure Storage<br/>tokens + deviceId"]
+        UI --> SQLITE
+        UI --> OUTBOX
+        SYNC --> OUTBOX
+        SYNC --> SQLITE
+        SYNC --> CACHE
+        SYNC --> SEC
+    end
+    API["Backend TRACOP (EC2)<br/>/auth /catalog /sync"]
+    S3W[("S3 · tracop-web<br/>Flutter Web")]
+    DEV -- "REST + /sync/push · /sync/pull" --> API
+    S3W -- "API_BASE_URL" --> API
+```
+
+- **Offline**: sin señal, la app escribe en local y actualiza la UI; al reconectar sincroniza (push idempotente por `opId`, pull por cursor).
+- **Cola del servidor**: el backend procesa el push y el worker (pg-boss + outbox) ejecuta las tareas diferidas; la app descarga los cambios con `GET /sync/pull?cursor=seq`.
+
+### Builds para la demo
+
+```bash
+# APK Android — apunta al backend desplegado (API_BASE_URL = salida `api_url` de Terraform)
+flutter build apk --release \
+  --dart-define=API_BASE_URL="$API_BASE_URL"
+
+# Web — para mostrarlo en el navegador
+flutter build web --release \
+  --dart-define=API_BASE_URL="$API_BASE_URL"
+```
+
+- **APK**: se distribuye por descarga (GitHub Release, Drive o el propio EC2). El jurado instala el `.apk` directo.
+- **Web**: se hostea en un bucket **S3** (static website hosting). Hay que configurar `CORS_ALLOWED_ORIGINS` en el backend con el origen de ese bucket.
+- La web es mobile-first (cámara/ubicación quedan limitados en navegador); el APK es el camino principal.
+
+> Sin dominio se usa HTTP tanto en el backend como en la web para evitar *mixed content*; si se agrega HTTPS, hay que aplicarlo en ambos.
+
+### Pipeline (CI/CD)
+
+- `.github/workflows/flutter-ci.yml` corre `flutter analyze` y `flutter test`.
+- `.github/workflows/deploy.yml` compila el APK y la web, y publica ambos como artefactos; el APK queda además en un Release de GitHub. La sincronización de `build/web` al bucket S3 es manual, con las credenciales del laboratorio.
 
 ---
 

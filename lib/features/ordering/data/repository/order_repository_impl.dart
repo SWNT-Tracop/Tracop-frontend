@@ -13,6 +13,8 @@ class OrderRepositoryImpl implements OrderRepository {
 
   final OrderRemoteDataSource remote;
   final AppDatabase db;
+  static const _localPaymentCandidatesKey =
+      'logistics:local-payment-candidates';
 
   @override
   Future<Result<OrderResponse, DomainFailure>> createOrder(
@@ -50,16 +52,21 @@ class OrderRepositoryImpl implements OrderRepository {
               ],
         nextCursor: page.nextCursor,
       );
-      await _write(key, merged.toJson());
-      for (final order in page.items) {
+      final hydrated = OrderPage(
+        items: await _applyLocalPaymentState(merged.items),
+        nextCursor: merged.nextCursor,
+        isFromCache: merged.isFromCache,
+      );
+      await _write(key, hydrated.toJson());
+      for (final order in hydrated.items) {
         await _write('ordering_detail_${order.id}', order.toJson());
       }
-      return Ok(page);
+      return Ok(hydrated);
     } on Object catch (error) {
       final cached = await _readPage(key);
       if (cached != null) {
         return Ok(OrderPage(
-          items: cached.items,
+          items: await _applyLocalPaymentState(cached.items),
           nextCursor: cached.nextCursor,
           isFromCache: true,
         ));
@@ -72,13 +79,117 @@ class OrderRepositoryImpl implements OrderRepository {
   Future<Result<OrderResponse, DomainFailure>> getOrderById(String id) async {
     try {
       final order = OrderResponse.fromJson(await remote.getOrder(id));
-      await _write('ordering_detail_$id', order.toJson());
-      return Ok(order);
+      final hydrated = (await _applyLocalPaymentState([order])).single;
+      await _write('ordering_detail_$id', hydrated.toJson());
+      return Ok(hydrated);
     } on Object catch (error) {
       final cached = await _readJson('ordering_detail_$id');
-      if (cached != null) return Ok(OrderResponse.fromJson(cached));
+      if (cached != null) {
+        final order = OrderResponse.fromJson(cached);
+        return Ok((await _applyLocalPaymentState([order])).single);
+      }
       return Err(_failure(error));
     }
+  }
+
+  @override
+  Future<Result<OrderResponse, DomainFailure>> simulatePaymentLocally(
+      OrderResponse order) async {
+    if (order.isLocallyPaid) return Ok(order);
+    if (order.status != 'accepted' && order.status != 'payment_pending') {
+      return const Err(DomainFailure(
+        statusCode: 409,
+        code: 'payment_not_ready',
+        message: 'El pedido todavía no está listo para registrar el pago.',
+      ));
+    }
+    final candidate = _localCandidateFor(order);
+    final candidates = await _readLocalPaymentCandidates();
+    candidates.removeWhere((item) => item['orderId'] == order.id);
+    candidates.add(candidate);
+    await _writeLocalPaymentCandidates(candidates);
+    final updated = order.copyWith(status: 'paid', isLocallyPaid: true);
+    await _write('ordering_detail_${order.id}', updated.toJson());
+    return Ok(updated);
+  }
+
+  Map<String, dynamic> _localCandidateFor(OrderResponse order) {
+    final provider = order.provider ?? const <String, dynamic>{};
+    final pickupZone = _firstText([
+      provider['municipality'],
+      provider['department'],
+      provider['displayName'],
+    ]);
+    return {
+      'orderId': order.id,
+      'deliveryZone': _deliveryZone(order.deliveryAddress),
+      'deliveryWindow': order.deliveryWindow?.toIso8601String(),
+      'pickupZones': [pickupZone],
+      'lines': order.lines
+          .map((line) => {
+                'lotId': line.lotId,
+                'quantityMilli': line.quantityMilli,
+                'unit': line.unit,
+              })
+          .toList(growable: false),
+      'isLocalPayment': true,
+    };
+  }
+
+  String _firstText(List<dynamic> values) {
+    for (final value in values) {
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim().toLowerCase();
+      }
+    }
+    return 'sin-zona';
+  }
+
+  String _deliveryZone(String? address) {
+    final parts = (address ?? '')
+        .split(',')
+        .map(
+            (part) => part.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' '))
+        .where((part) => part.isNotEmpty);
+    final streetTerms = RegExp(
+        r'\d|#|\b(calle|cll|carrera|cra|avenida|av|diagonal|diag|transversal|tv|autopista|kil[oó]metro|km)\b');
+    for (final part in parts.toList().reversed) {
+      if (!streetTerms.hasMatch(part)) return part;
+    }
+    return 'zona de entrega';
+  }
+
+  Future<List<OrderResponse>> _applyLocalPaymentState(
+      List<OrderResponse> orders) async {
+    final paidIds = (await _readLocalPaymentCandidates())
+        .map((item) => item['orderId'] as String?)
+        .whereType<String>()
+        .toSet();
+    return orders
+        .map((order) => paidIds.contains(order.id)
+            ? order.copyWith(status: 'paid', isLocallyPaid: true)
+            : order)
+        .toList(growable: false);
+  }
+
+  Future<List<Map<String, dynamic>>> _readLocalPaymentCandidates() async {
+    final row = await (db.select(db.syncState)
+          ..where((value) => value.key.equals(_localPaymentCandidatesKey)))
+        .getSingleOrNull();
+    if (row == null) return [];
+    return (jsonDecode(row.value) as List)
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+  }
+
+  Future<void> _writeLocalPaymentCandidates(
+      List<Map<String, dynamic>> candidates) async {
+    await db.into(db.syncState).insertOnConflictUpdate(
+          SyncStateCompanion.insert(
+            key: _localPaymentCandidatesKey,
+            value: jsonEncode(candidates),
+          ),
+        );
   }
 
   @override
@@ -89,11 +200,20 @@ class OrderRepositoryImpl implements OrderRepository {
 
   @override
   Future<Result<OrderResponse, DomainFailure>> cancelOrder(
-          String id, int expectedVersion, {String? reason}) =>
-      _mutate(() async => OrderResponse.fromJson(await remote.cancelOrder(
-          id,
-          CancelOrderRequest(expectedVersion: expectedVersion, reason: reason)
-              .toJson())));
+      String id, int expectedVersion,
+      {String? reason}) async {
+    final result = await _mutate(() async => OrderResponse.fromJson(
+        await remote.cancelOrder(
+            id,
+            CancelOrderRequest(expectedVersion: expectedVersion, reason: reason)
+                .toJson())));
+    if (result is Ok<OrderResponse, DomainFailure>) {
+      final candidates = await _readLocalPaymentCandidates();
+      candidates.removeWhere((item) => item['orderId'] == id);
+      await _writeLocalPaymentCandidates(candidates);
+    }
+    return result;
+  }
 
   Future<Result<OrderResponse, DomainFailure>> _mutate(
       Future<OrderResponse> Function() action) async {

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tracop_mobile/core/config/env.dart';
 import 'package:tracop_mobile/core/i18n/strings.dart';
 import 'package:tracop_mobile/core/result/result.dart';
 import 'package:tracop_mobile/features/auth/domain/entities/auth_session.dart';
+import 'package:tracop_mobile/features/auth/domain/entities/saved_account.dart';
 import 'package:tracop_mobile/features/auth/domain/entities/user.dart';
 import 'package:tracop_mobile/features/auth/domain/repository/auth_repository.dart';
 import 'package:tracop_mobile/features/auth/presentation/profile_screen.dart';
@@ -56,11 +58,43 @@ void main() {
     expect(find.text(ProfileStrings.offlineEditHint), findsOneWidget);
     expect(find.byTooltip(ProfileStrings.editName), findsNothing);
   });
+
+  testWidgets('la lista de cuentas guardadas puede desplazarse sin overflow',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repo = _Repo(
+      provider: null,
+      accounts: List.generate(
+        5,
+        (index) => SavedAccount(
+          user: User(
+            id: 'saved-$index',
+            role: 'carrier',
+            fullName: 'Carolina transporte $index',
+            phone: '+573102263866',
+            status: 'active',
+            locale: 'es-CO',
+          ),
+          isActive: index == 0,
+        ),
+      ),
+    );
+    await pumpProfile(tester, repo);
+    await tester.ensureVisible(find.text(ProfileStrings.localAccounts));
+    await tester.tap(find.text(ProfileStrings.localAccounts));
+    await tester.pumpAndSettle();
+
+    expect(find.text(ProfileStrings.savedAccounts), findsOneWidget);
+    expect(find.text('Carolina transporte 0'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  }, skip: !AppConfig.canUseLocalMultiAccount);
 }
 
-class _Repo implements AuthRepository {
-  _Repo({required this.provider});
+class _Repo implements AuthRepository, LocalAccountRepository {
+  _Repo({required this.provider, this.accounts = const []});
   final UpsertProviderProfileRequest? provider;
+  final List<SavedAccount> accounts;
   final user = const User(
       id: 'u1',
       role: 'producer',
@@ -78,6 +112,9 @@ class _Repo implements AuthRepository {
   @override
   Future<Result<UpsertProviderProfileRequest?, DomainFailure>>
       getStoredProviderProfile() async => Ok(provider);
+
+  @override
+  Future<List<SavedAccount>> getSavedAccounts() async => accounts;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

@@ -9,8 +9,10 @@ import '../../../app/theme.dart';
 import '../../../core/config/catalog_config.dart';
 import '../../../core/i18n/formats.dart';
 import '../../../core/i18n/strings.dart';
+import '../../../core/sync/sync_provider.dart';
 import '../../../shared/widgets/option_selectors.dart';
 import '../../../shared/widgets/lot_interaction_widgets.dart';
+import '../../../shared/widgets/provider_trust.dart';
 import '../../auth/presentation/providers/auth_provider.dart';
 import '../../home/presentation/home_screen.dart';
 import '../domain/entities/category.dart';
@@ -22,11 +24,13 @@ import 'providers/catalog_provider.dart';
 typedef _S = CatalogStrings;
 
 final searchCategoriesProvider = FutureProvider<List<Category>>((ref) async {
+  ref.watch(syncRevisionProvider);
   final result = await ref.read(catalogRepositoryProvider).getCategories();
   return result.map(
       ok: (value) => value.value, err: (failure) => throw failure);
 });
 final searchProductsProvider = FutureProvider<List<Product>>((ref) async {
+  ref.watch(syncRevisionProvider);
   final result = await ref.read(catalogRepositoryProvider).getProducts();
   return result.map(
       ok: (value) => value.value, err: (failure) => throw failure);
@@ -584,6 +588,15 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
                     .textTheme
                     .bodyLarge
                     ?.copyWith(fontWeight: FontWeight.w600)),
+            if (isBuyer && lot.provider != null) ...[
+              const SizedBox(height: 6),
+              ProviderTrustSummary(
+                verified: lot.provider!.verified,
+                rating: lot.provider!.rating,
+                ratingsCount: lot.provider!.ratingsCount,
+                compact: true,
+              ),
+            ],
             const SizedBox(height: 8),
             Row(children: [
               const Icon(Icons.event_available_outlined,
@@ -614,6 +627,17 @@ class _CatalogSearchScreenState extends ConsumerState<CatalogSearchScreen> {
                     style: const TextStyle(
                         fontWeight: FontWeight.w700, color: AppTheme.forest))
             ]),
+            if (isBuyer && !lot.isMine) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => context.push('/pedidos/nuevo', extra: lot),
+                  icon: const Icon(Icons.shopping_bag_outlined),
+                  label: const Text('Comprar este lote'),
+                ),
+              ),
+            ],
           ])),
     );
     final detailBack = Container(

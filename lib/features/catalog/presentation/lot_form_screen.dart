@@ -12,6 +12,7 @@ import '../../../app/back_guard.dart';
 import '../../../app/motion.dart';
 import '../../../app/theme.dart';
 import '../../../core/i18n/strings.dart';
+import '../../../core/i18n/formats.dart';
 import '../../../shared/widgets/option_selectors.dart';
 import '../../../core/result/result.dart';
 import '../../auth/presentation/providers/auth_provider.dart';
@@ -19,12 +20,16 @@ import '../../home/presentation/home_screen.dart';
 import '../domain/entities/category.dart' as catalog;
 import '../domain/entities/lot.dart' hide Category, Product;
 import '../domain/entities/product.dart';
+import '../domain/entities/product_proposal.dart';
 import '../domain/lot_form_rules.dart';
 import '../domain/lot_quantity.dart';
+import '../domain/repository/catalog_repository.dart';
 import 'lot_detail_screen.dart' show lotDetailProvider;
 import 'lot_error_text.dart';
 import 'providers/catalog_provider.dart';
 import 'providers/lot_management_provider.dart';
+import 'providers/product_proposal_provider.dart';
+import '../../recommendations/presentation/recommendations_provider.dart';
 
 class LotFormScreen extends ConsumerStatefulWidget {
   const LotFormScreen({this.lotId, super.key});
@@ -60,14 +65,63 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
   String? _photoError;
   List<LotPhoto> _photos = [];
   final List<_PendingLotPhoto> _pendingPhotos = [];
+  List<PendingPhotoStatus> _queuedPhotoStatuses = [];
   final _imagePicker = ImagePicker();
   Map<String, String> _fieldErrors = {};
   String? _baseline;
   (double, double)? _profilePoint;
   bool _usingProfilePoint = false;
+  bool _loadingPriceSuggestion = false;
 
   bool get isEditing => widget.isEditing || _draftLotId != null;
   String? get _activeLotId => widget.lotId ?? _draftLotId;
+
+  Future<void> _showPriceSuggestion() async {
+    final productId = _productId;
+    final unit = _unit;
+    if (productId == null || unit == null || _loadingPriceSuggestion) return;
+    setState(() => _loadingPriceSuggestion = true);
+    final repository = ref.read(recommendationsRepositoryProvider);
+    final result = await repository.guard(() =>
+        repository.remote.priceSuggestion(productId: productId, unit: unit));
+    if (!mounted) return;
+    setState(() => _loadingPriceSuggestion = false);
+    result.map(
+      ok: (value) {
+        final suggestion = value.value;
+        if (suggestion['status'] != 'ok') {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text(
+                  'Aún no hay datos suficientes para sugerir un precio.')));
+          return;
+        }
+        showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Precio sugerido'),
+            content: Text(
+                'Rango de referencia: ${AppFormats.moneyText(suggestion['low'].toString())} – ${AppFormats.moneyText(suggestion['high'].toString())}\n\nMediana sugerida: ${AppFormats.moneyText(suggestion['median'].toString())}\nFuente: ${suggestion['citation'] ?? 'Precios observados en TRACOP'}'),
+            actions: [
+              TextButton(
+                onPressed: () =>
+                    Navigator.of(dialogContext, rootNavigator: true).pop(),
+                child: const Text('Cerrar'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  _price.text = suggestion['median'].toString();
+                  Navigator.of(dialogContext, rootNavigator: true).pop();
+                },
+                child: const Text('Usar mediana'),
+              ),
+            ],
+          ),
+        );
+      },
+      err: (failure) => ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(failure.error.message))),
+    );
+  }
 
   // Huella de lo escrito para saber si hay cambios sin guardar.
   String get _signature => [
@@ -162,6 +216,15 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
     _photos = lot.photos;
     _usingProfilePoint = false;
     _baseline = _signature;
+    _loadQueuedPhotoStatuses(lot.id);
+  }
+
+  Future<void> _loadQueuedPhotoStatuses(String lotId) async {
+    final repository = ref.read(catalogRepositoryProvider);
+    if (repository is! PendingPhotoStatusReader) return;
+    final statuses = await (repository as PendingPhotoStatusReader)
+        .pendingLotPhotoStatuses(lotId);
+    if (mounted) setState(() => _queuedPhotoStatuses = statuses);
   }
 
   Future<void> _pickDate({required bool from}) async {
@@ -253,14 +316,6 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
     FocusScope.of(context).unfocus();
     final wasEditing = isEditing;
     final offline = ref.read(homeConnectivityProvider).valueOrNull == false;
-    if (offline) {
-      setState(() {
-        _fieldErrors = {};
-        _formError = 'Conéctate a internet para guardar el lote.';
-      });
-      _revealValidation();
-      return;
-    }
     final errors = _validateFields();
     if (errors.isNotEmpty) {
       setState(() {
@@ -382,15 +437,17 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
     }
 
     DomainFailure? publishFailure;
+    var queuedForSync = offline || saved.isFromCache;
     if (publish) {
       final outcome = await repo.publishLot(saved.id, saved.version);
       switch (outcome) {
-        case Ok():
-          break;
+        case Ok(:final value):
+          queuedForSync = queuedForSync || value.isFromCache;
         case Err(:final error):
           publishFailure = error;
       }
     }
+    await _loadQueuedPhotoStatuses(saved.id);
 
     if (!mounted) return;
     setState(() => _photoError = null);
@@ -399,13 +456,17 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
       saved.id: DateTime.now(),
     };
     _invalidateLotViews(saved.id);
-    final message = publishFailure != null
-        ? 'Guardado como borrador. No se pudo publicar: ${lotErrorText(publishFailure)}'
-        : publish
-            ? 'Lote publicado correctamente.'
-            : wasEditing
-                ? 'Cambios guardados correctamente.'
-                : 'Borrador guardado correctamente.';
+    final message = queuedForSync
+        ? (publish
+            ? 'Lote guardado localmente y pendiente de publicación.'
+            : 'Lote guardado en este dispositivo. Pendiente de sincronización.')
+        : publishFailure != null
+            ? 'Guardado como borrador. No se pudo publicar: ${lotErrorText(publishFailure)}'
+            : publish
+                ? 'Lote publicado correctamente.'
+                : wasEditing
+                    ? 'Cambios guardados correctamente.'
+                    : 'Borrador guardado correctamente.';
     final messenger = ScaffoldMessenger.of(context);
     final router = GoRouter.of(context);
     final confirmation = SnackBar(
@@ -634,8 +695,9 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
   }
 
   Widget _photosSection({required bool offline}) {
-    final count = _photos.length + _pendingPhotos.length;
-    final canAdd = !offline && !_submitting && !_photoBusy && count < 5;
+    final count =
+        _photos.length + _pendingPhotos.length + _queuedPhotoStatuses.length;
+    final canAdd = !_submitting && !_photoBusy && count < 5;
     return _SectionCard(
       title: 'Fotos del lote',
       subtitle:
@@ -673,6 +735,11 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
             ),
             const SizedBox(height: 12),
           ],
+          if (_queuedPhotoStatuses.isNotEmpty) ...[
+            for (final status in _queuedPhotoStatuses)
+              _QueuedPhotoStatusTile(status: status),
+            const SizedBox(height: 8),
+          ],
           OutlinedButton.icon(
             onPressed: canAdd ? _choosePhotoSource : null,
             icon: const Icon(Icons.add_a_photo_outlined),
@@ -689,7 +756,8 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
           ),
           if (offline) ...[
             const SizedBox(height: 8),
-            const Text('Conéctate para cargar y guardar las fotos.'),
+            const Text(
+                'Puedes agregarlas sin conexión; quedarán pendientes de carga.'),
           ],
           if (_photoError != null) ...[
             const SizedBox(height: 10),
@@ -718,7 +786,7 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
           fit: BoxFit.cover,
           errorBuilder: (_, __, ___) => const _PhotoPlaceholder(),
         ),
-        label: index == 0 ? 'Portada' : 'Foto ${index + 1}',
+        label: index == 0 ? 'Lista · Portada' : 'Lista · Foto ${index + 1}',
         onRemove: offline || _photoBusy || _submitting
             ? null
             : () => _removeSavedPhoto(photo),
@@ -734,29 +802,26 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
   Widget _pendingPhotoTile(_PendingLotPhoto photo) => _PhotoTile(
         key: ValueKey('pending-lot-photo-${photo.id}'),
         image: Image.memory(photo.bytes, fit: BoxFit.cover),
-        label: 'Pendiente de guardar',
+        label: 'Pendiente de cargar',
         onRemove: _submitting || _photoBusy
             ? null
             : () => setState(() => _pendingPhotos.remove(photo)),
       );
 
   Future<void> _createProduct() async {
-    final created = await showModalBottomSheet<Product>(
+    final proposal = await showModalBottomSheet<ProductProposal>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => const _CreateProductSheet(),
     );
-    if (created == null || !mounted) return;
-    ref.invalidate(catalogProductsProvider);
-    setState(() {
-      _createdProduct = created;
-      _productId = created.id;
-      _unit = created.unit;
-      _fieldErrors.remove('product');
-      if (_fieldErrors.isEmpty) _formError = null;
-    });
+    if (proposal == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content:
+          Text('Propuesta enviada. Quedará disponible cuando sea aprobada.'),
+    ));
+    context.push('/catalogo/propuestas');
   }
 
   void _leave() {
@@ -977,6 +1042,26 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      onPressed: _productId == null ||
+                              _unit == null ||
+                              _submitting ||
+                              _loadingPriceSuggestion
+                          ? null
+                          : _showPriceSuggestion,
+                      icon: _loadingPriceSuggestion
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.insights_outlined),
+                      label: const Text('Consultar precio sugerido'),
+                    ),
                   ),
                   if (estimatedSubtotal != null) ...[
                     const SizedBox(height: 14),
@@ -1306,6 +1391,39 @@ class _SectionCard extends StatelessWidget {
       );
 }
 
+class _QueuedPhotoStatusTile extends StatelessWidget {
+  const _QueuedPhotoStatusTile({required this.status});
+
+  final PendingPhotoStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final waiting = status.nextAttemptAt.isAfter(DateTime.now().toUtc());
+    final hasError =
+        status.state == 'error' || status.lastError?.isNotEmpty == true;
+    final label = hasError
+        ? 'Error reintentable'
+        : status.state == 'processing'
+            ? 'Procesando'
+            : waiting
+                ? 'Pendiente de carga'
+                : 'Pendiente de carga';
+    final icon = hasError
+        ? Icons.refresh_outlined
+        : waiting
+            ? Icons.cloud_upload_outlined
+            : Icons.sync_outlined;
+    return ListTile(
+      dense: true,
+      leading: Icon(icon, color: hasError ? AppTheme.earth : AppTheme.forest),
+      title: Text(label),
+      subtitle: Text(hasError
+          ? 'Se reintentará automáticamente.'
+          : 'La foto se conservará hasta completar la carga.'),
+    );
+  }
+}
+
 class _PendingLotPhoto {
   const _PendingLotPhoto({
     required this.id,
@@ -1499,7 +1617,7 @@ class _ProductField extends StatelessWidget {
         OutlinedButton.icon(
           onPressed: canCreateProduct ? onCreateProduct : null,
           icon: const Icon(Icons.add_rounded),
-          label: const Text('No encuentro mi producto · Crear producto'),
+          label: const Text('No encuentro mi producto · Proponer producto'),
         ),
       ],
     );
@@ -1550,17 +1668,12 @@ class _CreateProductSheetState extends ConsumerState<_CreateProductSheet> {
       setState(() => _error = 'Elige una categoría.');
       return;
     }
-    if (ref.read(homeConnectivityProvider).valueOrNull == false) {
-      setState(() => _error = 'Conéctate a internet para crear el producto.');
-      return;
-    }
-
     setState(() {
       _saving = true;
       _error = null;
     });
-    final result = await ref.read(catalogRepositoryProvider).createProduct(
-          CreateProductRequest(
+    final result = await ref.read(productProposalRepositoryProvider).create(
+          CreateProductProposalRequest(
             id: const Uuid().v7(),
             categoryId: _categoryId!,
             name: name,
@@ -1603,7 +1716,7 @@ class _CreateProductSheetState extends ConsumerState<_CreateProductSheet> {
                 children: [
                   Expanded(
                     child: Text(
-                      'Crear producto',
+                      'Proponer producto',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             color: AppTheme.forest,
                             fontWeight: FontWeight.w700,
@@ -1619,7 +1732,7 @@ class _CreateProductSheetState extends ConsumerState<_CreateProductSheet> {
               ),
               const SizedBox(height: 4),
               const Text(
-                  'El producto quedará disponible en el catálogo para todos. Elige una categoría existente.'),
+                  'La propuesta será revisada antes de aparecer en el catálogo.'),
               const SizedBox(height: 18),
               TextField(
                 key: const ValueKey('new-product-name'),
@@ -1694,7 +1807,7 @@ class _CreateProductSheetState extends ConsumerState<_CreateProductSheet> {
                         dimension: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Crear y usar producto'),
+                    : const Text('Enviar propuesta'),
               ),
             ],
           ),
@@ -1861,7 +1974,7 @@ class _OfflineNotice extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Sin conexión. Puedes preparar los datos, pero guardar requiere señal.',
+                'Sin conexión. El lote se guardará localmente y se sincronizará después.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: AppTheme.warningText,
                       fontSize: 14,

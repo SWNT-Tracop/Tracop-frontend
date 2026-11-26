@@ -20,7 +20,14 @@ class AppConfig {
     defaultValue: false,
   );
 
+  static const bool enableLocalMultiAccount = bool.fromEnvironment(
+    'ENABLE_LOCAL_MULTI_ACCOUNT',
+    defaultValue: false,
+  );
+
   static bool get canEnterWithoutSession => kDebugMode && allowOfflineAppEntry;
+  static bool get canUseLocalMultiAccount =>
+      kDebugMode && enableLocalMultiAccount;
 
   static const String defaultLocale = 'es_CO';
 

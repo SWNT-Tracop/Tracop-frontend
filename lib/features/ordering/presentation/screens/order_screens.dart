@@ -6,18 +6,35 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../app/theme.dart';
 import '../../../../core/i18n/formats.dart';
+import '../../../../core/config/payment_config.dart';
+import '../../../../core/i18n/strings.dart';
 import '../../../../core/result/result.dart';
 import '../../../../features/catalog/domain/entities/lot.dart'
     hide Category, Product;
 import '../../../../features/catalog/domain/lot_quantity.dart';
-import '../../../../features/catalog/presentation/providers/catalog_provider.dart';
 import '../../../../features/catalog/presentation/providers/lot_management_provider.dart'
     show catalogProductsProvider;
 import '../../../../features/home/presentation/home_screen.dart';
 import '../../../../shared/widgets/option_selectors.dart';
 import '../../domain/entities/order.dart';
+import '../../../payments/domain/payment_permissions.dart';
+import '../../../trust/domain/rating.dart';
+import '../../../trust/presentation/trust_provider.dart';
 import '../providers/order_provider.dart';
 import '../widgets/order_widgets.dart';
+import '../../../../shared/widgets/provider_trust.dart';
+
+/// Estados del pedido en los que el comprador ve la entrada a su pago.
+const _buyerPaymentStatuses = {
+  'accepted',
+  'payment_pending',
+  'paid',
+  'pickup_scheduled',
+  'in_transit',
+  'delivered',
+  'closed',
+  'disputed',
+};
 
 const _titleStyle = TextStyle(
   color: Color(0xFF115E26),
@@ -241,7 +258,7 @@ class _IncomingOrdersScreenState extends ConsumerState<IncomingOrdersScreen> {
 
   @override
   Widget build(BuildContext context) => OrderRoleGate(
-        roles: const {'supplier'},
+        roles: const {'producer', 'supplier'},
         child: RefreshIndicator(
           onRefresh: () => _load(),
           child: ListView(
@@ -283,15 +300,9 @@ class _IncomingOrdersScreenState extends ConsumerState<IncomingOrdersScreen> {
       );
 }
 
-final _orderLotsProvider = FutureProvider<List<Lot>>((ref) async {
-  final result =
-      await ref.read(catalogRepositoryProvider).searchLots(limit: 100);
-  return result.map(
-      ok: (value) => value.value.items, err: (failure) => throw failure.error);
-});
-
 class OrderCheckoutScreen extends ConsumerStatefulWidget {
-  const OrderCheckoutScreen({super.key});
+  const OrderCheckoutScreen({super.key, this.initialLot});
+  final Lot? initialLot;
   @override
   ConsumerState<OrderCheckoutScreen> createState() =>
       _OrderCheckoutScreenState();
@@ -305,6 +316,16 @@ class _OrderCheckoutScreenState extends ConsumerState<OrderCheckoutScreen> {
   bool _submitting = false;
   String? _addressError;
   String? _lineError;
+
+  @override
+  void initState() {
+    super.initState();
+    final lot = widget.initialLot;
+    if (lot != null && !lot.isMine) {
+      _selectedLots[lot.id] = lot;
+      _quantities[lot.id] = TextEditingController(text: '1');
+    }
+  }
 
   @override
   void dispose() {
@@ -401,7 +422,7 @@ class _OrderCheckoutScreenState extends ConsumerState<OrderCheckoutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final lotsAsync = ref.watch(_orderLotsProvider);
+    final lotsAsync = ref.watch(orderLotsProvider);
     final products = ref.watch(catalogProductsProvider).valueOrNull ?? const [];
     final connectivity = ref.watch(homeConnectivityProvider).valueOrNull;
     final online = connectivity == true;
@@ -420,8 +441,21 @@ class _OrderCheckoutScreenState extends ConsumerState<OrderCheckoutScreen> {
             const SizedBox(height: 8),
             lotsAsync.when(
               loading: () => const LinearProgressIndicator(),
-              error: (_, __) => const Text(
-                  'No se pudieron cargar los lotes. Intenta de nuevo.'),
+              error: (error, _) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('No se pudieron cargar los lotes.'),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => ref.invalidate(orderLotsProvider),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Intentar de nuevo'),
+                  ),
+                  if (error is DomainFailure && error.code != 'unknown')
+                    Text('Detalle: ${error.code}',
+                        style: Theme.of(context).textTheme.bodySmall),
+                ],
+              ),
               data: (lots) {
                 final options = lots
                     .where((lot) => !_selectedLots.containsKey(lot.id))
@@ -589,6 +623,101 @@ class OrderDetailScreen extends ConsumerStatefulWidget {
 class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
   bool _busy = false;
 
+  Future<void> _rateProvider(OrderResponse order) async {
+    final comment = TextEditingController();
+    var score = 5;
+    final selected = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Valorar proveedor'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('¿Cómo fue tu experiencia con este proveedor?'),
+              const SizedBox(height: 12),
+              Center(
+                child: Wrap(
+                  children: [
+                    for (var value = 1; value <= 5; value++)
+                      IconButton(
+                        tooltip: '$value estrellas',
+                        onPressed: () => setDialogState(() => score = value),
+                        color: value <= score
+                            ? const Color(0xFFE09A17)
+                            : AppTheme.mutedText,
+                        icon: Icon(
+                            value <= score ? Icons.star : Icons.star_border),
+                      ),
+                  ],
+                ),
+              ),
+              TextField(
+                controller: comment,
+                maxLength: 500,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Comentario (opcional)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Ahora no')),
+            FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Enviar')),
+          ],
+        ),
+      ),
+    );
+    final text = comment.text;
+    comment.dispose();
+    if (selected != true || !mounted) return;
+    setState(() => _busy = true);
+    final result = await ref.read(trustRepositoryProvider).submitRating(
+          RatingSubmission(
+            id: const Uuid().v7(),
+            orderId: order.id,
+            score: score,
+            comment: text,
+          ),
+        );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    result.map(
+      ok: (_) => ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Valoración enviada.'))),
+      err: (failure) => ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_ratingErrorMessage(failure.error)))),
+    );
+  }
+
+  Future<void> _reportPayment(OrderResponse order) async {
+    setState(() => _busy = true);
+    final result =
+        await ref.read(orderRepositoryProvider).simulatePaymentLocally(order);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    result.map(
+      ok: (_) {
+        ref.invalidate(orderDetailProvider(order.id));
+        ref.invalidate(myOrdersProvider(null));
+        ref.invalidate(incomingOrdersProvider(null));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(LogisticsStrings.paymentReported)),
+        );
+      },
+      err: (failure) => ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(failure.error.message)),
+      ),
+    );
+  }
+
   Future<void> _accept(OrderResponse order) async {
     final accepted = await showDialog<bool>(
         context: context,
@@ -701,7 +830,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
         final isBuyer = role == 'buyer';
         final canCancel = {'requested', 'quoted', 'accepted', 'payment_pending'}
                 .contains(order.status) &&
-            (isBuyer || role == 'supplier');
+            (isBuyer || role == 'producer' || role == 'supplier');
         return ListView(
             padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
             children: [
@@ -710,7 +839,16 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
               const SizedBox(height: 14),
               Align(
                   alignment: Alignment.centerLeft,
-                  child: OrderStatusBadge(status: order.status, large: true)),
+                  child: OrderStatusBadge(
+                    status:
+                        order.isLocallyPaid ? 'payment_pending' : order.status,
+                    large: true,
+                  )),
+              if (order.isLocallyPaid)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(LogisticsStrings.locallyPaidStatus),
+                ),
               const SizedBox(height: 20),
               Text('Productos',
                   style: Theme.of(context)
@@ -747,6 +885,21 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                   Text(
                       'Ventana: ${AppFormats.dayMonthTime(order.deliveryWindow!)}'),
               ],
+              if (isBuyer && order.provider != null) ...[
+                const SizedBox(height: 20),
+                Text('Proveedor',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                ProviderTrustSummary(
+                  verified: order.provider!['verified'] as bool? ?? false,
+                  rating: order.provider!['rating'] as String?,
+                  ratingsCount:
+                      (order.provider!['ratingsCount'] as num?)?.toInt() ?? 0,
+                ),
+              ],
               if (order.acceptedAt != null)
                 Padding(
                     padding: const EdgeInsets.only(top: 16),
@@ -772,6 +925,49 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                         child: _busy
                             ? const CircularProgressIndicator()
                             : const Text('Aceptar cotización'))),
+              ],
+              if (isBuyer && _buyerPaymentStatuses.contains(order.status)) ...[
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 50,
+                  child: FilledButton.icon(
+                    onPressed: _busy
+                        ? null
+                        : () => context.push('/pedidos/${order.id}/pago'),
+                    icon: const Icon(Icons.payments_outlined),
+                    label: Text(payableOrderStatuses.contains(order.status) &&
+                            !order.isLocallyPaid
+                        ? PaymentStrings.pay
+                        : PaymentStrings.viewPayment),
+                  ),
+                ),
+              ],
+              // Demo de logística: marca el pedido como pagado solo en este
+              // dispositivo. Solo con ENABLE_LOCAL_PAYMENT_DEMO=true, para no
+              // confundirlo con el pago real.
+              if (PaymentPermissions.showLocalPaymentDemo(
+                enabled: PaymentConfig.canUseLocalPaymentDemo,
+                isBuyer: isBuyer,
+                orderStatus: order.status,
+                isLocallyPaid: order.isLocallyPaid,
+              )) ...[
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: _busy ? null : () => _reportPayment(order),
+                  icon: const Icon(Icons.science_outlined),
+                  label: const Text(LogisticsStrings.recordLocalPayment),
+                ),
+              ],
+              if (isBuyer && order.status == 'delivered') ...[
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 50,
+                  child: OutlinedButton.icon(
+                    onPressed: _busy ? null : () => _rateProvider(order),
+                    icon: const Icon(Icons.star_outline),
+                    label: const Text('Valorar proveedor'),
+                  ),
+                ),
               ],
               if (canCancel) ...[
                 const SizedBox(height: 10),
@@ -857,6 +1053,16 @@ String _errorMessage(Object error) {
         : 'No se pudo completar la acción.',
   };
 }
+
+String _ratingErrorMessage(DomainFailure failure) => switch (failure.code) {
+      'rating_conflict' => 'Este pedido ya tiene una valoración registrada.',
+      'not_found' => 'Este pedido todavía no permite valorar al proveedor.',
+      'rate_limited' => 'Has enviado muchas valoraciones. Intenta más tarde.',
+      'offline' ||
+      'network_error' =>
+        'Sin conexión. Intenta valorar cuando vuelvas a estar en línea.',
+      _ => 'No se pudo enviar la valoración. Intenta de nuevo.',
+    };
 
 String _cancelReasonLabel(String reason) => switch (reason) {
       'buyer_cancelled' => 'Cancelado por el comprador',

@@ -78,6 +78,7 @@ class Lots extends Table {
 
 class OutboxOperations extends Table {
   TextColumn get opId => text()();
+  TextColumn get ownerUserId => text().nullable()();
   TextColumn get entity => text()();
   TextColumn get entityId => text()();
   TextColumn get type => text()();
@@ -122,6 +123,9 @@ class ConsentState extends Table {
 class AppDatabase extends _$AppDatabase {
   AppDatabase._internal(super.e);
 
+  @visibleForTesting
+  AppDatabase.forTesting(super.e);
+
   static Future<AppDatabase> create() async => AppDatabase._internal(
         driftDatabase(
           name: 'tracop',
@@ -133,7 +137,7 @@ class AppDatabase extends _$AppDatabase {
       );
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   Future<void> init() async {
     if (!kIsWeb) await customStatement('PRAGMA journal_mode = WAL');
@@ -144,6 +148,11 @@ class AppDatabase extends _$AppDatabase {
         onCreate: (Migrator m) async {
           await m.createAll();
           await init();
+        },
+        onUpgrade: (Migrator m, int from, int to) async {
+          if (from < 2) {
+            await m.addColumn(outboxOperations, outboxOperations.ownerUserId);
+          }
         },
       );
 }

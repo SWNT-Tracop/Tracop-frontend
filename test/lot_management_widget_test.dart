@@ -14,8 +14,11 @@ import 'package:tracop_mobile/features/catalog/domain/entities/category.dart';
 import 'package:tracop_mobile/features/catalog/domain/entities/lot.dart'
     hide Category, Product;
 import 'package:tracop_mobile/features/catalog/domain/entities/product.dart';
+import 'package:tracop_mobile/features/catalog/domain/entities/product_proposal.dart';
 import 'package:tracop_mobile/features/catalog/domain/repository/catalog_repository.dart';
+import 'package:tracop_mobile/features/catalog/domain/repository/product_proposal_repository.dart';
 import 'package:tracop_mobile/features/catalog/presentation/providers/catalog_provider.dart';
+import 'package:tracop_mobile/features/catalog/presentation/providers/product_proposal_provider.dart';
 import 'package:tracop_mobile/features/home/presentation/home_screen.dart';
 
 void main() {
@@ -43,7 +46,7 @@ void main() {
     expect(find.text('Lote publicado.'), findsOneWidget);
   });
 
-  testWidgets('my lots explains that publishing needs a connection',
+  testWidgets('my lots allows publishing offline with confirmation',
       (tester) async {
     app_router.router.go('/lotes');
     await tester.binding.setSurfaceSize(const Size(390, 844));
@@ -57,13 +60,18 @@ void main() {
     await tester.tap(find.byTooltip('Publicar lote').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('Necesitas conexión para hacer este cambio.'),
-        findsOneWidget);
     expect(
         find.text('El lote quedará visible para los compradores con la '
             'información actual.'),
-        findsNothing);
-    expect(repository.publishCalls, 0);
+        findsOneWidget);
+    await tester.tap(find.text('Publicar').last);
+    await tester.pumpAndSettle();
+
+    expect(
+        find.text('Publicación guardada en este dispositivo. Pendiente de '
+            'sincronización.'),
+        findsOneWidget);
+    expect(repository.publishCalls, 1);
   });
 
   testWidgets('lot form asks before leaving with unsaved changes',
@@ -237,8 +245,7 @@ void main() {
     expect(find.text('Lote publicado correctamente.'), findsOneWidget);
   });
 
-  testWidgets('offline save button explains why it cannot save',
-      (tester) async {
+  testWidgets('offline save stores the lot locally', (tester) async {
     app_router.router.go('/lotes/nuevo');
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -246,18 +253,28 @@ void main() {
     await tester.pumpWidget(_testApp(repository, connected: false));
     await tester.pumpAndSettle();
 
+    await _scrollTo(tester, find.byKey(const ValueKey('lot-product-selector')));
+    await tester.tap(find.byKey(const ValueKey('lot-product-selector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tomate chonto · kg').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Cantidad'), '25');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Precio por unidad'), '3200');
+    await tester.enterText(find.widgetWithText(TextField, 'Latitud'), '5.5353');
+    await tester.enterText(find.widgetWithText(TextField, 'Longitud'), '-73.3');
     await _scrollTo(tester, find.text('Guardar borrador').last);
     await tester.tap(find.text('Guardar borrador').last);
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Conéctate a internet para guardar el lote.'),
-      findsOneWidget,
-    );
-    expect(repository.created, isNull);
+        find.text('Lote guardado en este dispositivo. Pendiente de '
+            'sincronización.'),
+        findsOneWidget);
+    expect(repository.created, isNotNull);
   });
 
-  testWidgets('producer can create a product from the lot form',
+  testWidgets('producer can propose a product from the lot form',
       (tester) async {
     app_router.router.go('/lotes/nuevo');
     await tester.binding.setSurfaceSize(const Size(390, 844));
@@ -267,26 +284,26 @@ void main() {
     await tester.pumpAndSettle();
 
     await _scrollTo(
-        tester, find.text('No encuentro mi producto · Crear producto'));
-    await tester.tap(find.text('No encuentro mi producto · Crear producto'));
+        tester, find.text('No encuentro mi producto · Proponer producto'));
+    await tester.tap(find.text('No encuentro mi producto · Proponer producto'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Crear producto'), findsOneWidget);
+    expect(find.text('Proponer producto'), findsOneWidget);
     await tester.enterText(
         find.byKey(const ValueKey('new-product-name')), 'Papa criolla');
     await tester.tap(find.byKey(const ValueKey('new-product-category')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Tubérculos').last);
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Crear y usar producto'));
+    await tester.ensureVisible(find.text('Enviar propuesta'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Crear y usar producto'));
+    await tester.tap(find.text('Enviar propuesta'));
     await tester.pumpAndSettle();
 
     expect(repository.createdProduct?.name, 'Papa criolla');
     expect(repository.createdProduct?.unit, 'kg');
     expect(repository.createdProduct?.categoryId, 'category-test');
-    expect(find.text('Papa criolla · kg'), findsOneWidget);
+    expect(find.text('Propuestas de productos'), findsOneWidget);
   });
 }
 
@@ -307,6 +324,8 @@ Widget _testApp(CatalogRepository repository,
             .overrideWithValue(_AuthRepository(profile: profile)),
         authProvider.overrideWith((ref) => _ProducerAuthNotifier()),
         catalogRepositoryProvider.overrideWithValue(repository),
+        productProposalRepositoryProvider
+            .overrideWithValue(repository as ProductProposalRepository),
         homeUserProvider.overrideWith((ref) async => const User(
               id: 'producer-test',
               role: 'producer',
@@ -321,12 +340,12 @@ Widget _testApp(CatalogRepository repository,
       child: const TracopApp(),
     );
 
-class _LotRepository implements CatalogRepository {
+class _LotRepository implements CatalogRepository, ProductProposalRepository {
   int publishCalls = 0;
   int cancelCalls = 0;
   int deleteCalls = 0;
   CreateLotRequest? created;
-  CreateProductRequest? createdProduct;
+  Product? createdProduct;
   UpdateLotRequest? updated;
 
   Lot _lot({String status = 'draft', int version = 1}) => Lot(
@@ -368,15 +387,41 @@ class _LotRepository implements CatalogRepository {
   @override
   Future<Result<Product, DomainFailure>> createProduct(
       CreateProductRequest request) async {
-    createdProduct = request;
-    return Ok(Product(
+    final product = Product(
       id: request.id,
       categoryId: request.categoryId,
       name: request.name,
       unit: request.unit,
       attributes: const {},
+    );
+    createdProduct = product;
+    return Ok(product);
+  }
+
+  @override
+  Future<Result<ProductProposal, DomainFailure>> create(
+      CreateProductProposalRequest request) async {
+    final product = Product(
+      id: request.id,
+      categoryId: request.categoryId,
+      name: request.name,
+      unit: request.unit,
+      attributes: request.attributes,
+    );
+    createdProduct = product;
+    return Ok(ProductProposal(
+      id: product.id,
+      categoryId: product.categoryId,
+      name: product.name,
+      unit: product.unit,
+      attributes: product.attributes,
+      status: 'pending_review',
     ));
   }
+
+  @override
+  Future<Result<List<ProductProposal>, DomainFailure>> listMine() async =>
+      const Ok([]);
 
   @override
   Future<Result<LotPage, DomainFailure>> searchLots({
@@ -451,6 +496,9 @@ class _LotRepository implements CatalogRepository {
   Future<Result<List<LotPhoto>, DomainFailure>> reorderLotPhotos(
           String lotId, List<String> photoIds) async =>
       const Ok([]);
+
+  @override
+  Future<void> syncPendingLotPhotos() async {}
 }
 
 class _ProducerAuthNotifier extends AuthNotifier {

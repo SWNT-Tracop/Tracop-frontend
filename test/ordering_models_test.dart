@@ -69,6 +69,29 @@ void main() {
     expect(order.amounts.total, '4750');
     expect(order.deliveryAddress, isNull);
     expect(OrderResponse.fromJson(order.toJson()).id, order.id);
+    expect(OrderResponse.fromJson(order.toJson()).isLocallyPaid, isFalse);
+  });
+
+  test('preserves locally registered payment state in the cache model', () {
+    final order = OrderResponse.fromJson({
+      'id': '018f47a2-8b45-7cc2-9a1e-123456789abc',
+      'status': 'accepted',
+      'version': 3,
+      'createdAt': '2026-11-17T12:00:00.000Z',
+      'lines': [],
+      'subtotal': '3750',
+      'freight': '1000',
+      'commission': '100',
+      'total': '4750',
+      'providerNet': '3650',
+      'acceptedAt': null,
+      'cancelReason': null,
+      'quoteValidUntil': '2026-11-20T12:00:00.000Z',
+    }).copyWith(status: 'paid', isLocallyPaid: true);
+
+    final restored = OrderResponse.fromJson(order.toJson());
+    expect(restored.status, 'paid');
+    expect(restored.isLocallyPaid, isTrue);
   });
 
   test('serializes optimistic-concurrency request fields', () {

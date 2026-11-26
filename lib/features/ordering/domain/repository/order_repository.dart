@@ -14,4 +14,6 @@ abstract interface class OrderRepository {
   Future<Result<OrderResponse, DomainFailure>> cancelOrder(
       String id, int expectedVersion,
       {String? reason});
+  Future<Result<OrderResponse, DomainFailure>> simulatePaymentLocally(
+      OrderResponse order);
 }
