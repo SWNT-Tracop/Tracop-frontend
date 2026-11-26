@@ -69,6 +69,42 @@ abstract final class SyncStrings {
       'Última sincronización exitosa: ${value.toLocal()}';
 }
 
+abstract final class AccountAdminStrings {
+  static const title = 'Cuentas';
+  static const subtitle =
+      'Busca una cuenta por su celular para cambiar su rol o suspenderla.';
+  static const phoneLabel = 'Celular de la cuenta';
+  static const search = 'Buscar';
+  static const notFound = 'No hay ninguna cuenta con ese celular.';
+  static const invalidPhone = 'Escribe un celular válido (ej. 3001234567).';
+  static const role = 'Rol';
+  static const status = 'Estado';
+  static const phoneEnding = 'Celular terminado en';
+  static const changeRole = 'Cambiar rol';
+  static const newRole = 'Nuevo rol';
+  static const suspend = 'Suspender';
+  static const reactivate = 'Reactivar';
+  static const reasonLabel =
+      'Motivo (queda en la auditoría, sin datos personales)';
+  static const reasonInvalid = 'Escribe un motivo de 3 a 300 caracteres.';
+  static const confirm = 'Confirmar';
+  static const cancel = 'Cancelar';
+  static const roleChanged =
+      'Rol cambiado. La persona debe volver a iniciar sesión.';
+  static const suspended = 'Cuenta suspendida.';
+  static const reactivated = 'Cuenta reactivada.';
+  static const staffAccount =
+      'Las cuentas del personal no se cambian desde aquí.';
+  static const ownAccount = 'No puedes cambiar tu propia cuenta.';
+  static const failed = 'No pudimos completar la acción. Intenta de nuevo.';
+  static const marketRoles = ['producer', 'supplier', 'buyer', 'carrier'];
+  static const statusLabels = {
+    'active': 'Activa',
+    'pending_verification': 'Sin verificar',
+    'suspended': 'Suspendida',
+  };
+}
+
 abstract final class TelegramStrings {
   static const codeByTelegram = 'Te enviaremos el código por Telegram.';
   static const title = 'Tu código llega por Telegram';

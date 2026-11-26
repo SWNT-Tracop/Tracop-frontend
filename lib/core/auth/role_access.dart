@@ -16,6 +16,7 @@ enum StaffTool {
   parameters,
   pricing,
   audit,
+  accounts,
 }
 
 abstract final class RoleAccess {
@@ -28,12 +29,14 @@ abstract final class RoleAccess {
     }, // POST /catalog/categories, /catalog/products
     StaffTool.proposals: {'operator', 'admin'}, // /catalog/product-proposals/*
     StaffTool.logistics: {
-      'operator'
-    }, // /logistics/trips, carriers, incidents (admin: 403)
+      'operator',
+      'admin'
+    }, // /logistics/trips, carriers, incidents (Tracop-app #87)
     StaffTool.parameters:
         staffRoles, // GET /backoffice/parameters (editar: solo admin)
     StaffTool.pricing: {'operator', 'admin'}, // /pricing/mappings
     StaffTool.audit: {'admin'}, // GET /backoffice/audit
+    StaffTool.accounts: {'admin'}, // /staff/users: role change and suspension
   };
 
   static bool isStaff(String? role) => staffRoles.contains(role);
