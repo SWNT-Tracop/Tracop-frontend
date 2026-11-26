@@ -833,24 +833,154 @@ class _ParameterTile extends ConsumerWidget {
   }
 }
 
-class _AuditView extends ConsumerWidget {
+class _AuditView extends ConsumerStatefulWidget {
   const _AuditView();
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) => _BackofficePage(
-      title: 'Auditoría',
-      child: _AsyncBody(
-          state: ref.watch(backofficeAuditProvider),
-          builder: (value) => Column(children: [
-                for (final raw in value as List)
-                  Card(
-                      child: ListTile(
-                          title: Text(
-                              '${_map(raw)['action'] ?? ''} · ${_map(raw)['entity'] ?? ''}'),
-                          subtitle: Text(
-                              '${_map(raw)['at'] ?? ''}\nID: ${_map(raw)['entityId'] ?? ''}'))),
-                if (value.isEmpty)
-                  const _EmptyCard(message: 'No hay eventos de auditoría.')
-              ])));
+  ConsumerState<_AuditView> createState() => _AuditViewState();
+}
+
+class _AuditViewState extends ConsumerState<_AuditView> {
+  final entity = TextEditingController();
+  final entityId = TextEditingController();
+  final actorId = TextEditingController();
+  final action = TextEditingController();
+  List<dynamic>? items;
+  String? cursor;
+  bool loading = false;
+  Object? error;
+
+  @override
+  void dispose() {
+    entity.dispose();
+    entityId.dispose();
+    actorId.dispose();
+    action.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => _BackofficePage(
+        title: 'Auditoría',
+        child: Column(children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(children: [
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  _filter(entity, 'Entidad'),
+                  _filter(entityId, 'ID de entidad'),
+                  _filter(actorId, 'Actor'),
+                  _filter(action, 'Acción'),
+                ]),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.icon(
+                    onPressed: loading ? null : () => _load(),
+                    icon: const Icon(Icons.search),
+                    label: const Text('Filtrar'),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+          if (error != null) _ErrorCard(message: _friendlyError(error!)),
+          if (items == null && error == null)
+            _AsyncBody(
+              state: ref.watch(backofficeAuditProvider),
+              builder: (value) {
+                items ??= value as List<dynamic>;
+                return _auditItems();
+              },
+            )
+          else
+            _auditItems(),
+        ]),
+      );
+
+  Widget _filter(TextEditingController controller, String label) => SizedBox(
+        width: 190,
+        child: TextField(
+          controller: controller,
+          decoration: InputDecoration(labelText: label, isDense: true),
+        ),
+      );
+
+  Widget _auditItems() => Column(children: [
+        for (final raw in items ?? const []) _AuditTile(item: _map(raw)),
+        if ((items ?? const []).isEmpty)
+          const _EmptyCard(message: 'No hay eventos de auditoría.'),
+        if (cursor != null)
+          TextButton(
+              onPressed: loading ? null : () => _load(append: true),
+              child: const Text('Cargar más')),
+      ]);
+
+  Future<void> _load({bool append = false}) async {
+    setState(() {
+      loading = true;
+      error = null;
+      if (!append) {
+        items = null;
+        cursor = null;
+      }
+    });
+    final repository = ref.read(backofficeRepositoryProvider);
+    final result = await repository.guard(() => repository.remote.audit({
+          'limit': 50,
+          if (entity.text.trim().isNotEmpty) 'entity': entity.text.trim(),
+          if (entityId.text.trim().isNotEmpty) 'entityId': entityId.text.trim(),
+          if (actorId.text.trim().isNotEmpty) 'actorId': actorId.text.trim(),
+          if (action.text.trim().isNotEmpty) 'action': action.text.trim(),
+          if (append && cursor != null) 'cursor': cursor,
+        }));
+    if (!mounted) return;
+    result.map(
+      ok: (value) {
+        final page = value.value;
+        final pageItems = (page['items'] as List?)?.toList() ?? const [];
+        setState(() {
+          items = append ? [...?items, ...pageItems] : pageItems;
+          cursor = page['nextCursor']?.toString();
+          loading = false;
+        });
+      },
+      err: (failure) => setState(() {
+        error = failure.error;
+        loading = false;
+      }),
+    );
+  }
+}
+
+class _AuditTile extends StatelessWidget {
+  const _AuditTile({required this.item});
+  final Map<String, dynamic> item;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        child: ExpansionTile(
+          title: Text('${item['action'] ?? ''} · ${item['entity'] ?? ''}'),
+          subtitle: Text('${item['at'] ?? ''}\nID: ${item['entityId'] ?? ''}'),
+          children: [
+            _JsonLine(label: 'Antes', value: item['before']),
+            _JsonLine(label: 'Después', value: item['after']),
+          ],
+        ),
+      );
+}
+
+class _JsonLine extends StatelessWidget {
+  const _JsonLine({required this.label, required this.value});
+  final String label;
+  final Object? value;
+  @override
+  Widget build(BuildContext context) => ListTile(
+        dense: true,
+        title: Text(label),
+        subtitle: Text(value?.toString() ?? 'Sin cambios'),
+      );
 }
 
 class _EmptyCard extends StatelessWidget {

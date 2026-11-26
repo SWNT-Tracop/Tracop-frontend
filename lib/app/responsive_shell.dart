@@ -215,6 +215,46 @@ class ResponsiveShell extends ConsumerWidget {
     }
   }
 
+  Future<void> _showStaffMenu(BuildContext context, String? role) async {
+    if (!PaymentPermissions.isStaff(role)) return;
+    final destination = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(children: [
+          const ListTile(
+            title: Text('Más herramientas'),
+            subtitle: Text('Accesos administrativos'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.local_shipping_outlined),
+            title: const Text('Logística'),
+            onTap: () => Navigator.pop(sheetContext, '/backoffice/logistica'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.fact_check_outlined),
+            title: const Text('Propuestas'),
+            onTap: () => Navigator.pop(sheetContext, '/backoffice/propuestas'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.tune_outlined),
+            title: const Text('Parámetros'),
+            onTap: () => Navigator.pop(sheetContext, '/backoffice/parametros'),
+          ),
+          if (role == 'admin')
+            ListTile(
+              leading: const Icon(Icons.history_outlined),
+              title: const Text('Auditoría'),
+              onTap: () => Navigator.pop(sheetContext, '/backoffice/auditoria'),
+            ),
+        ]),
+      ),
+    );
+    if (destination != null && context.mounted) {
+      await _guardedGo(context, destination);
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.listen(homeConnectivityProvider, _onConnectivityChange);
@@ -339,6 +379,12 @@ class ResponsiveShell extends ConsumerWidget {
                     ),
                   ),
                 ),
+                if (PaymentPermissions.isStaff(role))
+                  IconButton(
+                    tooltip: 'Más herramientas',
+                    onPressed: () => _showStaffMenu(context, role),
+                    icon: const Icon(Icons.more_horiz),
+                  ),
                 Tooltip(
                   message: NavStrings.profileTooltip(displayName),
                   child: InkWell(
@@ -445,6 +491,12 @@ class ResponsiveShell extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  if (PaymentPermissions.isStaff(role))
+                    IconButton(
+                      tooltip: 'Más herramientas',
+                      onPressed: () => _showStaffMenu(context, role),
+                      icon: const Icon(Icons.more_horiz),
+                    ),
                   const SizedBox(width: 10),
                   Flexible(
                     child: InkWell(
