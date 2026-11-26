@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../app/theme.dart';
 import '../../../../core/i18n/formats.dart';
+import '../../../../core/config/payment_config.dart';
 import '../../../../core/i18n/strings.dart';
 import '../../../../core/result/result.dart';
 import '../../../../features/catalog/domain/entities/lot.dart'
@@ -16,11 +17,24 @@ import '../../../../features/catalog/presentation/providers/lot_management_provi
 import '../../../../features/home/presentation/home_screen.dart';
 import '../../../../shared/widgets/option_selectors.dart';
 import '../../domain/entities/order.dart';
+import '../../../payments/domain/payment_permissions.dart';
 import '../../../trust/domain/rating.dart';
 import '../../../trust/presentation/trust_provider.dart';
 import '../providers/order_provider.dart';
 import '../widgets/order_widgets.dart';
 import '../../../../shared/widgets/provider_trust.dart';
+
+/// Estados del pedido en los que el comprador ve la entrada a su pago.
+const _buyerPaymentStatuses = {
+  'accepted',
+  'payment_pending',
+  'paid',
+  'pickup_scheduled',
+  'in_transit',
+  'delivered',
+  'closed',
+  'disputed',
+};
 
 const _titleStyle = TextStyle(
   color: Color(0xFF115E26),
@@ -912,17 +926,36 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                             ? const CircularProgressIndicator()
                             : const Text('Aceptar cotización'))),
               ],
-              if (isBuyer &&
-                  !order.isLocallyPaid &&
-                  {'accepted', 'payment_pending'}.contains(order.status)) ...[
+              if (isBuyer && _buyerPaymentStatuses.contains(order.status)) ...[
                 const SizedBox(height: 16),
                 SizedBox(
                   height: 50,
-                  child: FilledButton.tonalIcon(
-                    onPressed: _busy ? null : () => _reportPayment(order),
+                  child: FilledButton.icon(
+                    onPressed: _busy
+                        ? null
+                        : () => context.push('/pedidos/${order.id}/pago'),
                     icon: const Icon(Icons.payments_outlined),
-                    label: const Text(LogisticsStrings.recordLocalPayment),
+                    label: Text(payableOrderStatuses.contains(order.status) &&
+                            !order.isLocallyPaid
+                        ? PaymentStrings.pay
+                        : PaymentStrings.viewPayment),
                   ),
+                ),
+              ],
+              // Demo de logística: marca el pedido como pagado solo en este
+              // dispositivo. Solo con ENABLE_LOCAL_PAYMENT_DEMO=true, para no
+              // confundirlo con el pago real.
+              if (PaymentPermissions.showLocalPaymentDemo(
+                enabled: PaymentConfig.canUseLocalPaymentDemo,
+                isBuyer: isBuyer,
+                orderStatus: order.status,
+                isLocallyPaid: order.isLocallyPaid,
+              )) ...[
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: _busy ? null : () => _reportPayment(order),
+                  icon: const Icon(Icons.science_outlined),
+                  label: const Text(LogisticsStrings.recordLocalPayment),
                 ),
               ],
               if (isBuyer && order.status == 'delivered') ...[

@@ -8,6 +8,10 @@ abstract final class NavStrings {
   static const brandLogoLabel = 'TRACOP Agro';
   static const brandIsotypeLabel = 'Isotipo TRACOP';
   static const myAccount = 'Mi cuenta';
+  static const payments = 'Pagos';
+  static const paymentsSummary = 'Resumen';
+  static const paymentsReview = 'Revisión';
+  static const settlements = 'Liquidaciones';
   static String profileTooltip(String name) => 'Perfil: $name';
 }
 
@@ -97,6 +101,9 @@ abstract final class RoleStrings {
         'supplier' => 'Proveedor',
         'buyer' => 'Comprador',
         'carrier' => 'Transportista',
+        'operator' => 'Operaciones TRACOP',
+        'finance' => 'Finanzas TRACOP',
+        'admin' => 'Administración TRACOP',
         _ => role
       };
 }
@@ -184,7 +191,7 @@ abstract final class LogisticsStrings {
   static const syncCouldNotSend =
       'No se pudo enviar todavía. Tus cambios siguen guardados aquí.';
   static const retrySync = 'Reintentar sincronización';
-  static const recordLocalPayment = 'Reportar pago';
+  static const recordLocalPayment = 'Registrar pago local (demo)';
   static const paymentReported = 'Pago reportado. Pendiente de confirmación.';
   static const locallyPaidStatus = 'Pago reportado, pendiente de confirmación';
   static const pendingTrip = 'Pendiente de sincronización';
@@ -579,4 +586,497 @@ abstract final class ProviderProfileStrings {
         _ =>
           'No pudimos guardar el perfil. Verifica los datos e intenta de nuevo.'
       };
+}
+
+abstract final class PaymentStrings {
+  // Estados (textos del documento funcional de pagos).
+  static String status(String wire) => switch (wire) {
+        'pending' => 'Pendiente de pago',
+        'proof_uploaded' => 'Comprobante pendiente de revisión',
+        'verified' => 'Pago verificado',
+        'held' => 'Pago retenido hasta la entrega',
+        'rejected' => 'Pago rechazado',
+        'disputed' => 'Pago en disputa',
+        'settled' => 'Pago liquidado',
+        'refunded' => 'Pago reembolsado',
+        '' => 'Estado desconocido',
+        _ => 'Estado desconocido ($wire)',
+      };
+
+  /// Rótulo para mostrar un pago: igual que `status`, salvo una disputa
+  /// liberada (el API la devuelve como `held` con `disputeReason`).
+  static String statusLabel(String wire, {bool disputeResolved = false}) =>
+      disputeResolved ? disputeResolvedLabel : status(wire);
+  static const disputeResolvedLabel = 'Disputa resuelta';
+
+  static const methodTransfer = 'Transferencia';
+  static const methodNequi = 'Nequi';
+  static String method(String wire) => switch (wire) {
+        'transfer' => methodTransfer,
+        'nequi' => methodNequi,
+        '' => 'Medio desconocido',
+        _ => wire,
+      };
+  static const loading = 'Cargando';
+
+  // Comprador.
+  static const screenTitle = 'PAGO DEL PEDIDO';
+  static String orderShort(String id) =>
+      'Pedido #${id.substring(0, 8).toUpperCase()}';
+  static const pay = 'Pagar';
+  static const viewPayment = 'Ver pago';
+  static const orderSummary = 'Resumen del pedido';
+  static const products = 'Productos';
+  static String lotShort(String id) =>
+      'Lote ${id.substring(0, 8).toUpperCase()}';
+  static const subtotal = 'Subtotal';
+  static const freight = 'Flete';
+  static const commission = 'Comisión TRACOP';
+  static const total = 'Total a pagar';
+  static const totalShort = 'Total';
+  static const providerNet = 'Neto del proveedor';
+  static const amountsFromPayment = 'Montos registrados en el pago.';
+  static const amountsFromOrder = 'Montos de la cotización aceptada.';
+  static const chooseMethod = 'Elige cómo vas a pagar';
+  static const transferHint = 'Desde tu banco a la cuenta de TRACOP';
+  static const nequiHint = 'Desde tu app Nequi';
+  static const methodLocked =
+      'El medio de pago queda fijado para este pago. Si lo rechazan, podrás elegir otro.';
+  static String continueWith(String method) => 'Continuar con $method';
+  static const starting = 'Registrando pago…';
+  static const notPayableYet =
+      'Este pedido todavía no está listo para pagar. Primero acepta la cotización.';
+  static const orderClosedForPayment =
+      'Este pedido no admite pagos en su estado actual.';
+  static const orderNotPayableTitle =
+      'Pedido cancelado o reserva vencida: no transfieras';
+  static const orderNotPayableBody =
+      'Este pedido ya no se puede pagar. No hagas ninguna transferencia; si ya la hiciste, comunícate con TRACOP con el número del pedido.';
+  static const paymentsUnavailableTitle = 'Pagos no disponibles por el momento';
+  static const paymentsUnavailableBody =
+      'Estamos configurando los datos de pago de TRACOP. Intenta más tarde y no transfieras todavía.';
+  static const instructionsTitle = 'Cómo pagar';
+  static const transferSteps =
+      'Haz una transferencia por el total exacto a esta cuenta y guarda el comprobante.';
+  static const nequiSteps =
+      'Envía el total exacto a este número Nequi y toma captura del comprobante.';
+  static const bank = 'Banco';
+  static const accountType = 'Tipo de cuenta';
+  static const accountNumber = 'Número de cuenta';
+  static const accountHolder = 'Titular';
+  static const accountHolderId = 'NIT';
+  static const nequiNumber = 'Número Nequi';
+  static const placeholderWarning =
+      'Datos de cuenta de ejemplo: confirma con TRACOP antes de pagar.';
+  static const copy = 'Copiar';
+  static String copied(String label) => '$label copiado.';
+  static const referenceHint =
+      'En la descripción del pago escribe el número del pedido.';
+  static const currentStatus = 'Estado del pago';
+  static const statusPendingBody =
+      'Cuando hagas el pago, sube aquí el comprobante para que lo revisemos.';
+  static const statusProofUploadedBody =
+      'Recibimos tu comprobante. El equipo de TRACOP lo revisará pronto; mientras tanto tu reserva se mantiene.';
+  static const statusVerifiedBody =
+      'Confirmamos tu pago. El pedido sigue con la recogida y el envío.';
+  static const statusHeldBody =
+      'El pedido fue entregado. El dinero queda retenido un tiempo por si hay algún reclamo antes de pagar al proveedor.';
+  static const statusRejectedBody =
+      'No pudimos validar el comprobante. Puedes iniciar un nuevo pago.';
+  static const statusDisputedBody =
+      'Abriste una disputa. El equipo de TRACOP la revisará y te contactará.';
+  static const statusDisputeResolvedBody =
+      'TRACOP revisó la disputa y decidió continuar con el pedido. El pago sigue su curso hacia la liquidación al proveedor.';
+  static const statusSettledBody =
+      'El pago se completó y se liquidó al proveedor.';
+  static const statusRefundedBody =
+      'Registramos la devolución. La transferencia se hace por fuera de la app.';
+  static const statusUnknownBody =
+      'Esta versión de la app no reconoce el estado del pago. Actualiza la app o consulta con TRACOP.';
+  static const rejectionReason = 'Motivo del rechazo';
+  static const disputeReason = 'Motivo de la disputa';
+  static const startNewPayment = 'Iniciar un nuevo pago';
+  static const proofTitle = 'Comprobante de pago';
+  static const uploadProof = 'Subir comprobante';
+  static const uploadingProof = 'Subiendo comprobante…';
+  static const cancelUpload = 'Cancelar';
+  static const cancelUploadTooltip = 'Cancelar la carga del comprobante';
+  static const uploadCancelled =
+      'Carga cancelada. Tu pago no cambió; puedes subir el comprobante cuando quieras.';
+  static const chooseFromGallery = 'Elegir de la galería';
+  static const takePhoto = 'Tomar foto';
+  static String proofRequirements(int megabytes) =>
+      'Imagen JPEG, PNG o WebP de máximo $megabytes MB. Debe verse el valor, la fecha y la referencia.';
+  static const proofUploaded = 'Comprobante enviado. Lo revisaremos pronto.';
+  static const pickerFailed =
+      'No pudimos abrir la cámara o la galería. Revisa los permisos e intenta de nuevo.';
+  static const retryUpload = 'Reintentar carga';
+  static const proofImageLabel = 'Imagen del comprobante';
+  static const openProof = 'Ver comprobante en grande';
+  static const proofUnavailable = 'Este pago todavía no tiene comprobante.';
+  static const expiredLinkTitle = 'El enlace del comprobante venció';
+  static const expiredLinkBody =
+      'Por seguridad, el enlace dura pocos minutos. Vuelve a cargarlo para verlo.';
+  static const reload = 'Volver a cargar';
+  static const close = 'Cerrar';
+
+  // Hitos (no hay historial completo en el API).
+  static const milestonesTitle = 'Hitos del pago';
+  static const milestonesHint =
+      'Solo se muestran las fechas que registra el pago; no es un historial completo.';
+  static const milestoneCreated = 'Pago iniciado';
+  static const milestoneProofUploaded = 'Comprobante enviado';
+  static const milestoneVerified = 'Pago verificado';
+  static const milestoneRejected = 'Comprobante rechazado';
+  static const milestoneHeld = 'Pedido entregado, pago retenido';
+  static const milestoneDisputed = 'Disputa abierta';
+  static const milestoneDisputeResolved = 'Disputa resuelta';
+  static const milestoneNoDate = 'Fecha no registrada';
+  static String milestoneCurrent(String status) =>
+      'Última actualización: $status';
+  static const bogotaTimeNote = 'Horas en hora de Colombia.';
+
+  // Disputa del comprador.
+  static const openDispute = 'Abrir disputa';
+  static const disputeTitle = 'Abrir una disputa';
+  static const disputeIntro =
+      'Cuéntanos qué pasó con el pedido. El equipo de TRACOP revisará tu caso.';
+  static const disputeWarning =
+      'Mientras la disputa esté abierta, el pago al proveedor queda bloqueado. Úsala solo si hubo un problema real con el pedido.';
+  static const disputeReasonLabel = 'Motivo *';
+  static const disputeReasonHint = 'Ej.: llegó incompleto o en mal estado';
+  static const reasonRequired = 'Escribe el motivo.';
+  static const reasonTooLong = 'Máximo 500 caracteres.';
+  static const confirmDisputeTitle = '¿Abrir la disputa?';
+  static const confirmDisputeBody =
+      'No podrás deshacerlo desde la app. El pago al proveedor quedará bloqueado hasta que TRACOP resuelva.';
+  static const confirmDispute = 'Sí, abrir disputa';
+  static const disputeOpened = 'Disputa abierta. Te contactaremos pronto.';
+
+  // Personal TRACOP.
+  static const reviewTitle = 'REVISIÓN DE PAGOS';
+  static const reviewIntro =
+      'Comprobantes por verificar y disputas abiertas, del más antiguo al más reciente.';
+  static const refresh = 'Actualizar';
+  static String lastRefresh(String time) => 'Actualizado a las $time';
+  static const autoRefreshNote =
+      'Se actualiza cada minuto mientras esté abierta.';
+  static const searchLabel = 'Buscar por id de pago o de pedido';
+  static const filterStatus = 'Estado';
+  static const filterMethod = 'Medio';
+  static const filterAll = 'Todos';
+  static const filterProofs = 'Por verificar';
+  static const filterDisputes = 'Disputas';
+  static String resultsCount(int shown, int total) =>
+      shown == total ? '$total pagos' : '$shown de $total pagos';
+  static const reviewEmptyTitle = 'No hay pagos por revisar';
+  static const reviewEmptyBody =
+      'Cuando un comprador suba un comprobante o abra una disputa, aparecerá aquí.';
+  static const reviewNoMatchesTitle = 'Ningún pago coincide';
+  static const reviewNoMatchesBody = 'Cambia los filtros o la búsqueda.';
+  static const clearFilters = 'Limpiar filtros';
+  static const reviewLoadError = 'No pudimos cargar la cola de revisión.';
+  static String reviewHidden(int count) => count == 1
+      ? 'Hay 1 pendiente más que no se muestra.'
+      : 'Hay $count pendientes más que no se muestran.';
+  static const reviewHiddenUnknown =
+      'Puede haber más pendientes que no se muestran.';
+  static const reviewHiddenHelp =
+      'El servidor entrega como máximo 100, empezando por los que llevan más tiempo sin cambios; los más recientes quedan fuera. Resuelve los más antiguos primero y actualiza para ver los siguientes.';
+  static const columnPayment = 'Pago';
+  static const columnOrder = 'Pedido';
+  static const columnMethod = 'Medio';
+  static const columnStatus = 'Estado';
+  static const columnTotal = 'Total';
+  static const columnWaiting = 'En espera';
+  static String waiting(Duration age) {
+    if (age.inMinutes < 1) return 'hace menos de 1 min';
+    if (age.inHours < 1) return 'hace ${age.inMinutes} min';
+    if (age.inDays < 1) return 'hace ${age.inHours} h';
+    return 'hace ${age.inDays} d';
+  }
+
+  static String waitingSinceAt(String dateTime) => 'Desde $dateTime';
+  static String overdue(int hours) => 'Más de $hours h';
+  static const overdueTooltip = 'Lleva más tiempo del esperado sin revisión.';
+  static String shortId(String id) => id.substring(0, 8).toUpperCase();
+
+  static const detailTitle = 'DETALLE DEL PAGO';
+  static const paymentId = 'Id del pago';
+  static const orderId = 'Id del pedido';
+  static const copyId = 'Copiar id';
+  static const idCopied = 'Id copiado.';
+  static const orderAccessNote =
+      'El detalle del pedido no está disponible para el personal en el API actual; usa el id para buscarlo en el backoffice.';
+  static const methodLabel = 'Medio de pago';
+  static const version = 'Versión';
+  static const createdAt = 'Creado';
+  static const proofUploadedAt = 'Comprobante enviado';
+  static const reviewedAt = 'Revisado';
+  static const heldAt = 'Retenido desde';
+  static const updatedAt = 'Última actualización';
+  static const backToInbox = 'Volver a la revisión';
+  static const noActions = 'No hay acciones disponibles en este estado.';
+  static const detailLoadError = 'No pudimos cargar el pago.';
+
+  static const verify = 'Verificar pago';
+  static const verifyTitle = '¿Verificar este pago?';
+  static const verifyBody =
+      'Confirmas que recibiste este valor en la cuenta de TRACOP:';
+  static const verifyConsequences =
+      'El pedido pasará a pagado y la reserva de los lotes se consumirá. Esta acción no se puede deshacer.';
+  static const confirmVerify = 'Sí, verificar';
+  static const verified = 'Pago verificado.';
+
+  static const reject = 'Rechazar';
+  static const rejectTitle = 'Rechazar comprobante';
+  static const rejectIntro = 'Elige o escribe el motivo. El comprador lo verá.';
+  static const rejectReasons = [
+    'El comprobante es ilegible.',
+    'El valor no coincide con el total del pedido.',
+    'No encontramos el dinero en la cuenta de TRACOP.',
+    'El comprobante no corresponde a este pedido.',
+  ];
+  static const rejectReasonLabel = 'Motivo del rechazo *';
+  static const rejectConsequences =
+      'El comprador podrá iniciar un nuevo pago. La reserva del pedido vuelve a vencer tras un periodo de gracia.';
+  static const confirmReject = 'Rechazar comprobante';
+  static const rejected = 'Comprobante rechazado.';
+
+  static const resolve = 'Resolver disputa';
+  static const resolveTitle = 'Resolver disputa';
+  static const releaseTitle = 'Liberar al proveedor';
+  static const releaseBody =
+      'El pago vuelve a "retenido" y seguirá a liquidación al proveedor.';
+  static const releaseUnavailable =
+      'No disponible: el pedido no se ha entregado.';
+  static const refundTitle = 'Reembolsar al comprador';
+  static const refundBody =
+      'Se registra la devolución en TRACOP. La transferencia al comprador se hace por fuera de la app.';
+  static const resolutionNoteLabel = 'Nota de resolución *';
+  static const resolutionNoteHint = 'Qué se verificó y por qué se decide así';
+  static const chooseOutcome = 'Elige una resolución.';
+  static const orderWillClose = 'En ambos casos el pedido queda cerrado.';
+  static const confirmRelease = 'Liberar pago';
+  static const confirmRefund = 'Registrar reembolso';
+  static const resolved = 'Disputa resuelta.';
+
+  // Auditoría (solo administración).
+  static const auditTitle = 'Auditoría';
+  static const auditHint =
+      'Acciones del personal sobre este pago, de la más reciente a la más antigua. Solo la ve administración.';
+  static const auditEmpty = 'No hay acciones registradas para este pago.';
+  static const auditLoadError = 'No pudimos cargar la auditoría.';
+  static const auditLoadMore = 'Cargar más';
+  static const auditSystem = 'Sistema';
+  static String auditActor(String role, String? shortId) =>
+      shortId == null ? 'Por $role' : 'Por $role · $shortId';
+  static String auditAction(String action) => switch (action) {
+        'payment.verify' => 'Pago verificado',
+        'payment.reject' => 'Comprobante rechazado',
+        'payment.dispute_release' => 'Disputa liberada al proveedor',
+        'payment.dispute_refund' => 'Disputa resuelta con reembolso',
+        'settlement.mark_paid' => 'Liquidación marcada como pagada',
+        _ => action,
+      };
+
+  static const conflictTitle = 'El pago cambió';
+  static const conflictBody =
+      'Otra persona actualizó este pago mientras lo revisabas. Carga la última versión y revisa antes de continuar.';
+  static const loadLatest = 'Cargar última versión';
+}
+
+abstract final class SettlementStrings {
+  static const title = 'LIQUIDACIONES';
+  static const intro =
+      'Pagos a proveedores y transportistas. Marca cada una como pagada cuando hagas la transferencia.';
+  static const loadError = 'No pudimos cargar las liquidaciones.';
+  static const emptyTitle = 'No hay liquidaciones';
+  static const emptyIssuedBody =
+      'No hay liquidaciones por pagar. Se emiten cuando se confirma la entrega de un pedido.';
+  static const emptyBody = 'Todavía no hay liquidaciones en este estado.';
+  static const noMatchesTitle = 'Ninguna liquidación coincide';
+  static const noMatchesBody = 'Cambia los filtros o la búsqueda.';
+  static const limitNote =
+      'El servidor entrega como máximo las 100 liquidaciones emitidas más recientemente; las más antiguas no aparecen aquí.';
+  static String hiddenIssued(int count) => count == 1
+      ? 'Hay 1 liquidación por pagar más antigua que no se muestra.'
+      : 'Hay $count liquidaciones por pagar más antiguas que no se muestran.';
+  static const hiddenIssuedHelp =
+      'El servidor solo entrega las 100 más recientes. Al marcar como pagadas las visibles y actualizar, aparecerán las siguientes.';
+  static String resultsCount(int shown, int total) => shown == total
+      ? '$total ${total == 1 ? 'liquidación' : 'liquidaciones'}'
+      : '$shown de $total liquidaciones';
+
+  // Filtros.
+  static const searchLabel = 'Buscar por id de pedido o de pago';
+  static const filterStatus = 'Estado';
+  static const filterIssued = 'Emitidas';
+  static const filterPaid = 'Pagadas';
+  static const filterAll = 'Todas';
+  static const filterKind = 'Beneficiario';
+  static const filterKindAll = 'Todos';
+  static const filterPeriod = 'Emitidas en';
+  static const periodAll = 'Cualquier fecha';
+  static const period7 = 'Últimos 7 días';
+  static const period30 = 'Últimos 30 días';
+  static const periodRange = 'Elegir fechas…';
+  static String periodRangeLabel(String from, String to) =>
+      from == to ? from : '$from – $to';
+  static const clearRange = 'Quitar rango de fechas';
+  static const rangePickerHelp = 'Fecha de emisión (hora de Colombia)';
+
+  // `producer` es el proveedor del pedido (productor o proveedor).
+  static String kind(String wire) => switch (wire) {
+        'producer' => 'Proveedor',
+        'carrier' => 'Transportista',
+        '' => 'Beneficiario desconocido',
+        _ => wire,
+      };
+  static String status(String wire) => switch (wire) {
+        'issued' => 'Por pagar',
+        'paid' => 'Pagada',
+        '' => 'Estado desconocido',
+        _ => wire,
+      };
+
+  // Columnas.
+  static const columnBeneficiary = 'Beneficiario';
+  static const columnOrder = 'Pedido';
+  static const columnPayment = 'Pago';
+  static const columnAmount = 'Monto';
+  static const columnStatus = 'Estado';
+  static const columnIssued = 'Emitida';
+  static const columnPaid = 'Pagada';
+  static const columnReference = 'Referencia';
+  static const noDate = '—';
+  static const noReference = 'Sin referencia';
+  static String openPayment(String shortId) => 'Abrir pago $shortId';
+
+  // Marcar como pagada.
+  static const markPaid = 'Marcar pagada';
+  static const markPaidTitle = 'Marcar liquidación como pagada';
+  static const markPaidIntro =
+      'Registra el pago solo después de hacer la transferencia al beneficiario.';
+  static const beneficiary = 'Beneficiario';
+  static const amount = 'Monto a pagar';
+  static const referenceLabel = 'Referencia de la transferencia *';
+  static const referenceHint = 'Ej.: número de comprobante del banco';
+  static const referenceHelp =
+      'Queda guardada en la liquidación para conciliar con el extracto.';
+  static const referenceRequired = 'Escribe la referencia de la transferencia.';
+  static const referenceTooLong = 'Máximo 100 caracteres.';
+  static const irreversibleWarning =
+      'Esta acción no se puede deshacer. Si es la última liquidación del pago, el pago queda liquidado y el pedido se cierra.';
+  static const continueLabel = 'Continuar';
+  static const confirmTitle = '¿Confirmas que ya pagaste?';
+  static const confirmBody =
+      'Vas a registrar como pagada esta liquidación con la referencia:';
+  static const confirmMarkPaid = 'Sí, marcar como pagada';
+  static const markedPaid = 'Liquidación marcada como pagada.';
+  static const conflictTitle = 'La liquidación cambió';
+  static const conflictBody =
+      'Otra persona actualizó esta liquidación. Cargamos la lista de nuevo; revísala antes de continuar.';
+
+  // En el detalle del pago.
+  static const paymentSectionTitle = 'Liquidaciones de este pago';
+  static const paymentSectionEmpty =
+      'No encontramos liquidaciones de este pago entre las 100 más recientes.';
+  static const heldNotIssuedYet =
+      'Todavía no hay liquidaciones: se emiten al terminar la ventana de reclamo tras la entrega (parámetro payment.claim_window_hours, 48 h por defecto).';
+  static const settledOutOfRange =
+      'Fuera de las 100 más recientes: las liquidaciones de este pago no están entre las que entrega el servidor. Búscalas en la lista de liquidaciones.';
+  static const backToSettlements = 'Volver a liquidaciones';
+  static const viewInSettlements = 'Ver en liquidaciones';
+  static const paymentSectionError =
+      'No pudimos cargar las liquidaciones de este pago.';
+  static String paidOn(String date) => 'Pagada el $date';
+  static String issuedOn(String date) => 'Emitida el $date';
+
+  // Quién marcó la liquidación como pagada (auditoría, solo administración).
+  static const showPaidBy = 'Ver quién la marcó pagada';
+  static String paidBy(String role, String? shortId, String date) =>
+      'Marcada pagada por $role${shortId == null ? '' : ' · $shortId'} el $date';
+  static const paidByMissing =
+      'No hay registro en la auditoría de quién la marcó pagada.';
+  static const paidByError = 'No pudimos consultar la auditoría.';
+  static const paidByUnavailable =
+      'Quién la marcó pagada: no disponible (solo administración ve la auditoría).';
+}
+
+abstract final class LedgerStrings {
+  static const title = 'Libro contable del pedido';
+  static const readOnly =
+      'Solo lectura. Cada transacción debe cuadrar: débitos = créditos.';
+  static const empty = 'Este pedido todavía no tiene asientos contables.';
+  static const loadError = 'No pudimos cargar el libro contable.';
+  static const account = 'Cuenta';
+  static const debit = 'Débito';
+  static const credit = 'Crédito';
+  static const total = 'Total del pedido';
+  static const balanced = 'Cuadrado';
+  static String unbalanced(String difference) => 'Descuadre de $difference';
+  static const someUnbalanced = 'Hay transacciones descuadradas';
+  static const unbalancedHelp =
+      'Los débitos y créditos no coinciden. Reporta el pedido al equipo técnico.';
+  static const zero = '—';
+
+  static String kind(String wire) => switch (wire) {
+        'payment_verified' => 'Pago verificado',
+        'delivery_confirmed' => 'Entrega confirmada',
+        'settlement_paid_producer' => 'Liquidación al proveedor',
+        'settlement_paid_carrier' => 'Liquidación al transportista',
+        'refund' => 'Reembolso',
+        '' => 'Asiento desconocido',
+        _ => wire,
+      };
+
+  static String accountName(String account) => switch (account) {
+        'cash_held' => 'Dinero recibido en custodia',
+        'payable_buyer_funds' => 'Fondos del comprador',
+        'payable_producer' => 'Por pagar al proveedor',
+        'payable_carrier' => 'Por pagar al transportista',
+        'revenue_commission' => 'Ingreso por comisión',
+        _ => account,
+      };
+}
+
+abstract final class PaymentsDashboardStrings {
+  static const title = 'RESUMEN DE PAGOS';
+  static const intro = 'Lo que necesita atención hoy y el estado del dinero.';
+  static String updated(String dateTime) => 'Actualizado: $dateTime';
+  static const loadError = 'No pudimos cargar el resumen de pagos.';
+
+  static const proofs = 'Comprobantes por revisar';
+  static const disputes = 'Disputas abiertas';
+  static const issued = 'Liquidaciones por pagar';
+  static const paid = 'Liquidaciones pagadas';
+  static const paidOrders = 'Pedidos pagados';
+  static const paidOrdersHint = 'Total cobrado a compradores';
+  static String paidOrdersCount(int value) =>
+      count(value, 'pedido pagado', 'pedidos pagados');
+  static String count(int value, String singular, String plural) =>
+      '$value ${value == 1 ? singular : plural}';
+  static String settlementsCount(int value) =>
+      count(value, 'liquidación', 'liquidaciones');
+  static String oldest(String age) => 'El más antiguo: $age';
+  static const noneWaiting = 'Nada en espera';
+  static const reviewProofs = 'Revisar comprobantes';
+  static const reviewDisputes = 'Ver disputas';
+  static const openIssued = 'Pagar liquidaciones';
+  static const openPaid = 'Ver pagadas';
+
+  static String overdueAlert(int count, int hours, String age) =>
+      '$count ${count == 1 ? 'comprobante lleva' : 'comprobantes llevan'} '
+      'más de $hours h sin revisar (el más antiguo, $age).';
+
+  static const barTitle = 'Liquidaciones: pagado vs por pagar';
+  static const barEmpty = 'Todavía no hay liquidaciones emitidas.';
+  static const legendPaid = 'Pagado';
+  static const legendIssued = 'Por pagar';
+  static String percent(int value) => '$value %';
+  static String barSemantics(String paid, String issued) =>
+      'Pagado $paid, por pagar $issued';
+  static String pendingCount(int count) =>
+      count == 1 ? '1 por pagar' : '$count por pagar';
 }

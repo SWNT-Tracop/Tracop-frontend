@@ -5,14 +5,21 @@ import 'package:go_router/go_router.dart';
 import '../core/i18n/strings.dart';
 import '../features/home/presentation/home_screen.dart';
 import '../features/notifications/presentation/notifications_provider.dart';
+import '../features/payments/domain/payment_permissions.dart';
 import 'back_guard.dart';
 import 'messenger.dart';
 import 'theme.dart';
 
 class ResponsiveShell extends ConsumerWidget {
   const ResponsiveShell(
-      {required this.currentLocation, required this.child, super.key});
+      {required this.currentLocation,
+      required this.child,
+      this.origin,
+      super.key});
   final String currentLocation;
+
+  /// Sección desde la que se abrió la ruta (`?desde=liquidaciones`).
+  final String? origin;
   final Widget child;
 
   static const _logoAsset =
@@ -33,37 +40,77 @@ class ResponsiveShell extends ConsumerWidget {
     (path: '/perfil', label: NavStrings.profile, icon: Icons.person_outline),
   ];
 
+  /// Personal TRACOP (finance, operator, admin): resumen, revisión y
+  /// liquidaciones. Sin "Inicio": para el personal, `/` redirige al resumen.
+  static const _staffDestinations =
+      <({String path, String label, IconData icon})>[
+    (
+      path: '/pagos/resumen',
+      label: NavStrings.paymentsSummary,
+      icon: Icons.space_dashboard_outlined
+    ),
+    (
+      path: '/pagos/revision',
+      label: NavStrings.paymentsReview,
+      icon: Icons.fact_check_outlined
+    ),
+    (
+      path: '/pagos/liquidaciones',
+      label: NavStrings.settlements,
+      icon: Icons.payments_outlined
+    ),
+    (path: '/perfil', label: NavStrings.profile, icon: Icons.person_outline),
+  ];
+
+  /// Destino activo dentro de /pagos/: coincidencia exacta o, para el
+  /// detalle `/pagos/:id`, liquidaciones si se abrió desde ahí
+  /// (`?desde=liquidaciones`) y si no la revisión.
+  static int _paymentsIndex(
+          List<({String path, String label, IconData icon})> destinations,
+          String location,
+          String? origin) =>
+      switch (destinations.indexWhere((item) => item.path == location)) {
+        -1 => destinations.indexWhere((item) =>
+            item.path ==
+            (origin == 'liquidaciones'
+                ? '/pagos/liquidaciones'
+                : '/pagos/revision')),
+        final index => index,
+      };
+
   List<({String path, String label, IconData icon})> _destinationsFor(
           String? role) =>
-      role == 'carrier'
-          ? const [
-              (
-                path: '/logistica',
-                label: 'Logística',
-                icon: Icons.local_shipping_outlined
-              ),
-              (
-                path: '/perfil',
-                label: NavStrings.profile,
-                icon: Icons.person_outline
-              ),
-            ]
-          : [
-              ..._baseDestinations.take(2),
-              if (role == 'buyer')
-                (
-                  path: '/pedidos/mis-pedidos',
-                  label: 'Pedidos',
-                  icon: Icons.receipt_long_outlined
-                ),
-              if (role == 'producer' || role == 'supplier')
-                (
-                  path: '/pedidos/entrantes',
-                  label: 'Pedidos',
-                  icon: Icons.inbox_outlined
-                ),
-              ..._baseDestinations.skip(2),
-            ];
+      PaymentPermissions.isStaff(role)
+          ? _staffDestinations
+          : role == 'carrier'
+              ? const [
+                  (
+                    path: '/logistica',
+                    label: 'Logística',
+                    icon: Icons.local_shipping_outlined
+                  ),
+                  (
+                    path: '/perfil',
+                    label: NavStrings.profile,
+                    icon: Icons.person_outline
+                  ),
+                ]
+              : [
+                  ..._baseDestinations.take(2),
+                  if (role == 'buyer')
+                    (
+                      path: '/pedidos/mis-pedidos',
+                      label: 'Pedidos',
+                      icon: Icons.receipt_long_outlined
+                    ),
+                  if (role == 'producer' || role == 'supplier')
+                    (
+                      path: '/pedidos/entrantes',
+                      label: 'Pedidos',
+                      icon: Icons.inbox_outlined
+                    ),
+                  ..._baseDestinations.skip(2),
+                ];
 
   void _onConnectivityChange(
       AsyncValue<bool>? previous, AsyncValue<bool> next) {
@@ -199,17 +246,22 @@ class ResponsiveShell extends ConsumerWidget {
         : currentLocation.startsWith('/pedidos/')
             ? destinations
                 .indexWhere((item) => item.path.startsWith('/pedidos/'))
-            : destinations.indexWhere((item) =>
-                currentLocation == item.path ||
-                currentLocation.startsWith('${item.path}/'));
+            : currentLocation.startsWith('/pagos/')
+                ? _paymentsIndex(destinations, currentLocation, origin)
+                : destinations.indexWhere((item) =>
+                    currentLocation == item.path ||
+                    currentLocation.startsWith('${item.path}/'));
     final selected = selectedIndex < 0 ? 0 : selectedIndex;
     final sectionTitle = destinations[selected].label;
     final router = GoRouter.maybeOf(context);
-    final backTarget = router == null || currentLocation == '/'
-        ? null
-        : destinations[selected].path == currentLocation
-            ? '/'
-            : destinations[selected].path;
+    // El primer destino es el inicio de cada rol ('/' o '/pagos/resumen').
+    final home = destinations.first.path;
+    final backTarget =
+        router == null || currentLocation == '/' || currentLocation == home
+            ? null
+            : destinations[selected].path == currentLocation
+                ? home
+                : destinations[selected].path;
 
     return PopScope(
       canPop: backTarget == null || router!.canPop(),

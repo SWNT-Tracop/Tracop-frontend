@@ -22,6 +22,12 @@ import 'features/ordering/data/remote/order_remote.dart';
 import 'features/ordering/data/repository/order_repository_impl.dart';
 import 'features/ordering/presentation/providers/order_provider.dart';
 import 'features/logistics/data/logistics_remote.dart';
+import 'features/payments/data/remote/payment_backoffice_remote.dart';
+import 'features/payments/data/remote/payment_remote.dart';
+import 'features/payments/data/repository/payment_backoffice_repository_impl.dart';
+import 'features/payments/data/repository/payment_repository_impl.dart';
+import 'features/payments/presentation/providers/payment_backoffice_provider.dart';
+import 'features/payments/presentation/providers/payment_provider.dart';
 
 import 'features/logistics/data/logistics_repository.dart';
 import 'features/logistics/presentation/logistics_provider.dart';
@@ -91,6 +97,13 @@ Future<void> main() async {
           ProductProposalRepositoryImpl(remote: catalogRemote),
         ),
         orderRepositoryProvider.overrideWithValue(orderRepo),
+        paymentRepositoryProvider.overrideWithValue(
+          PaymentRepositoryImpl(remote: PaymentRemoteDataSourceImpl(dioClient)),
+        ),
+        paymentBackofficeRepositoryProvider.overrideWithValue(
+          PaymentBackofficeRepositoryImpl(
+              remote: PaymentBackofficeRemoteDataSourceImpl(dioClient)),
+        ),
         logisticsRepositoryProvider.overrideWithValue(logisticsRepo),
         syncServiceProvider.overrideWithValue(syncService),
         notificationsRepositoryProvider.overrideWithValue(
