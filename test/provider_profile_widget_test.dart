@@ -10,9 +10,12 @@ import 'package:tracop_mobile/features/auth/domain/repository/auth_repository.da
 import 'package:tracop_mobile/features/auth/presentation/provider_profile_screen.dart';
 import 'package:tracop_mobile/features/auth/presentation/providers/auth_provider.dart';
 import 'package:tracop_mobile/features/home/presentation/home_screen.dart';
+import 'package:tracop_mobile/core/config/colombia_locations.dart';
+import 'package:tracop_mobile/core/location/device_location.dart';
 
 void main() {
   _backAndEditTests();
+  _locationTests();
   testWidgets('provider profile validates location and saves required fields',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 1200));
@@ -49,28 +52,17 @@ void main() {
     await tester.enterText(find.byType(TextField).first, 'Finca Prueba');
     await tester.tap(find.text('Siguiente'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Departamento'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Boyacá').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Municipio'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Tunja').last);
-    await tester.pumpAndSettle();
+    await _pick(tester, 'Departamento', 'boyaca', 'Boyacá');
+    await _pick(tester, 'Municipio', 'tunja', 'Tunja');
     await tester.tap(find.text('Siguiente'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Siguiente'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Elige el punto de recogida'), findsOneWidget);
-    await tester.tap(find.text('Ingresar coordenadas manualmente'));
+    expect(find.text(ProviderProfileStrings.pointRequired), findsOneWidget);
+    await tester
+        .tap(find.text(ProviderProfileStrings.useMunicipalityCentre('Tunja')));
     await tester.pumpAndSettle();
-    final coordinates = find.byType(TextField);
-    await tester.enterText(coordinates.at(0), '14');
-    await tester.enterText(coordinates.at(1), '-73.3');
-    await tester.tap(find.text('Siguiente'));
-    await tester.pumpAndSettle();
-    expect(find.text('Elige un punto dentro de Colombia.'), findsOneWidget);
-    await tester.enterText(coordinates.at(0), '5.5353');
+    expect(find.text(ProviderProfileStrings.pointChosen), findsOneWidget);
     await tester.tap(find.text('Siguiente'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Guardar perfil'));
@@ -79,8 +71,9 @@ void main() {
     expect(repository.saved?.displayName, 'Finca Prueba');
     expect(repository.saved?.municipality, 'Tunja');
     expect(repository.saved?.department, 'Boyacá');
-    expect(repository.saved?.lat, 5.5353);
-    expect(repository.saved?.lng, -73.3);
+    final tunja = ColombiaLocations.municipality('Boyacá', 'Tunja')!;
+    expect(repository.saved?.lat, tunja.lat);
+    expect(repository.saved?.lng, tunja.lng);
     expect(find.text('¡Perfil guardado!'), findsOneWidget);
   });
 }
@@ -132,17 +125,12 @@ void _backAndEditTests() {
 
     await tester.tap(find.text(CommonStrings.next));
     await tester.pumpAndSettle();
-    await tester.tap(find.text(ProviderProfileStrings.department));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Boyacá').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text(ProviderProfileStrings.municipality));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Tunja').last);
-    await tester.pumpAndSettle();
+    await _pick(tester, ProviderProfileStrings.department, 'boyaca', 'Boyacá');
+    await _pick(tester, ProviderProfileStrings.municipality, 'tunja', 'Tunja');
     await tester.tap(find.text(CommonStrings.next));
     await tester.pumpAndSettle();
-    await tester.tap(find.text(ProviderProfileStrings.useReference));
+    await tester
+        .tap(find.text(ProviderProfileStrings.useMunicipalityCentre('Tunja')));
     await tester.pumpAndSettle();
     await tester.tap(find.text(CommonStrings.next));
     await tester.pumpAndSettle();
@@ -189,4 +177,90 @@ class _ProducerAuthNotifier extends AuthNotifier {
       ),
     ));
   }
+}
+
+/// Opens a searchable selector, filters it and picks the option.
+Future<void> _pick(
+    WidgetTester tester, String label, String query, String option) async {
+  await tester.tap(find.text(label));
+  await tester.pumpAndSettle();
+  await tester.enterText(find.widgetWithText(TextField, 'Buscar'), query);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(option).last);
+  await tester.pumpAndSettle();
+}
+
+/// Opens the profile on the pickup-point step, with the device location replaced.
+Future<void> _openPointStep(
+    WidgetTester tester, DeviceLocationResult location) async {
+  await tester.binding.setSurfaceSize(const Size(390, 1400));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  final repository = _ProviderProfileRepository();
+  final router = GoRouter(initialLocation: '/provider', routes: [
+    GoRoute(
+        path: '/provider',
+        builder: (context, state) => const ProviderProfileScreen()),
+  ]);
+  addTearDown(router.dispose);
+  await tester.pumpWidget(ProviderScope(
+    overrides: [
+      authRepositoryProvider.overrideWithValue(repository),
+      authProvider.overrideWith((ref) => _ProducerAuthNotifier(repository)),
+      homeConnectivityProvider.overrideWith((ref) => Stream<bool>.value(true)),
+      deviceLocatorProvider.overrideWithValue(() async => location),
+    ],
+    child: MaterialApp.router(routerConfig: router),
+  ));
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.enterText(find.byType(TextField).first, 'Finca Prueba');
+  await tester.tap(find.text(CommonStrings.next));
+  await tester.pumpAndSettle();
+  await _pick(tester, ProviderProfileStrings.department, 'boyaca', 'Boyacá');
+  await _pick(
+      tester, ProviderProfileStrings.municipality, 'ventaq', 'Ventaquemada');
+  await tester.tap(find.text(CommonStrings.next));
+  await tester.pumpAndSettle();
+}
+
+void _locationTests() {
+  testWidgets('the GPS marks the pickup point when the phone is in Colombia',
+      (tester) async {
+    await _openPointStep(tester, const DeviceLocationFound(5.36, -73.52));
+    expect(
+        find.text(ProviderProfileStrings.useMunicipalityCentre('Ventaquemada')),
+        findsOneWidget);
+    await tester.tap(find.text(ProviderProfileStrings.useGps));
+    await tester.pumpAndSettle();
+    expect(find.text(ProviderProfileStrings.pointChosen), findsOneWidget);
+  });
+
+  testWidgets('a disabled GPS says so and offers the settings', (tester) async {
+    await _openPointStep(tester,
+        const DeviceLocationFailed(DeviceLocationProblem.serviceDisabled));
+    await tester.tap(find.text(ProviderProfileStrings.useGps));
+    await tester.pumpAndSettle();
+    expect(
+        find.text(ProviderProfileStrings.gpsServiceDisabled), findsOneWidget);
+    expect(find.text(ProviderProfileStrings.openSettings), findsOneWidget);
+    expect(find.text(ProviderProfileStrings.pointChosen), findsNothing);
+  });
+
+  testWidgets('a denied permission explains it without a settings detour',
+      (tester) async {
+    await _openPointStep(tester,
+        const DeviceLocationFailed(DeviceLocationProblem.permissionDenied));
+    await tester.tap(find.text(ProviderProfileStrings.useGps));
+    await tester.pumpAndSettle();
+    expect(
+        find.text(ProviderProfileStrings.gpsPermissionDenied), findsOneWidget);
+    expect(find.text(ProviderProfileStrings.openSettings), findsNothing);
+  });
+
+  testWidgets('a position outside Colombia is not used', (tester) async {
+    await _openPointStep(tester, const DeviceLocationFound(40.4, -3.7));
+    await tester.tap(find.text(ProviderProfileStrings.useGps));
+    await tester.pumpAndSettle();
+    expect(find.text(ProviderProfileStrings.gpsOutside), findsOneWidget);
+    expect(find.text(ProviderProfileStrings.pointChosen), findsNothing);
+  });
 }

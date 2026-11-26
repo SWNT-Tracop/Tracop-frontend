@@ -524,14 +524,24 @@ abstract final class ProviderProfileStrings {
   static const locationRequired =
       'Elige primero el departamento y luego el municipio.';
   static const pointRequired =
-      'Elige el punto de recogida en el mapa o usa la opción manual.';
+      'Toca el mapa en el punto de recogida, o usa el centro del municipio o tu ubicación.';
   static const pointOutside = 'Elige un punto dentro de Colombia.';
   static String descriptionTooLong(int max) =>
       'La descripción no puede superar $max caracteres.';
   static const offlineSave =
       'Guardamos tu borrador en este dispositivo. Conéctate para enviar el perfil.';
+  static const gpsServiceDisabled =
+      'La ubicación del celular está apagada. Actívala y vuelve a intentarlo.';
+  static const gpsPermissionDenied =
+      'Necesitamos permiso de ubicación para usar tu GPS. También puedes tocar el mapa.';
+  static const gpsDeniedForever =
+      'El permiso de ubicación está bloqueado. Actívalo en los ajustes de la app.';
   static const gpsUnavailable =
-      'El GPS del dispositivo no está habilitado en esta versión. Puedes marcar el mapa o ingresar el punto manualmente.';
+      'No pudimos leer tu ubicación. Intenta de nuevo al aire libre o toca el mapa.';
+  static const gpsOutside =
+      'Tu ubicación está fuera de Colombia. Toca el mapa.';
+  static const gpsLocating = 'Buscando tu ubicación…';
+  static const openSettings = 'Abrir ajustes';
 
   static const nameTitle = '¿Cómo se llama tu operación?';
   static const nameBody =
@@ -541,7 +551,8 @@ abstract final class ProviderProfileStrings {
   static const producerTypes = ['Finca familiar', 'Asociación', 'Negocio'];
 
   static const locationTitle = '¿Dónde está tu operación?';
-  static const locationBody = 'Elige departamento y municipio de la lista.';
+  static const locationBody =
+      'Elige el departamento y luego busca tu municipio por su nombre.';
   static const department = 'Departamento';
   static const departmentHint = 'Seleccionar departamento';
   static const municipality = 'Municipio';
@@ -550,18 +561,16 @@ abstract final class ProviderProfileStrings {
 
   static const pointTitle = 'Marca el punto de recogida';
   static const pointBody =
-      'Toca el mapa en el lugar aproximado donde podemos recoger tus productos.';
-  static const useReference = 'Usar ubicación de referencia';
-  static const useGps = 'Usar mi ubicación GPS';
+      'Acerca el mapa y toca el lugar donde podemos recoger tus productos.';
+  static String useMunicipalityCentre(String municipality) =>
+      'Usar el centro de $municipality';
+  static const useGps = 'Usar mi ubicación actual';
   static const privacy = 'La ubicación exacta no se muestra a compradores.';
-  static const manualShow = 'Ingresar coordenadas manualmente';
-  static const manualHide = 'Ocultar ingreso manual';
-  static const latitude = 'Latitud';
-  static const longitude = 'Longitud';
-  static String point(String lat, String lng) => 'Punto: $lat, $lng';
-  static const mapLabel = 'Mapa de Colombia. Toca para elegir un punto';
-  static const mapTitle = 'COLOMBIA';
-  static const mapNote = 'Mapa esquemático';
+  static const pointChosen = 'Punto de recogida marcado.';
+  static const mapLabel = 'Mapa. Toca para elegir el punto de recogida';
+  static const mapOffline =
+      'Sin conexión el mapa no carga. Usa el centro de tu municipio y ajústalo después.';
+  static const mapAttribution = '© OpenStreetMap';
 
   static const offerTitle = 'Cuéntales sobre tu oferta';
   static const offerBody =

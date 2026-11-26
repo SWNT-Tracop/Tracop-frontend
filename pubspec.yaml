@@ -29,6 +29,9 @@ dependencies:
   flutter_web_plugins:
     sdk: flutter
   url_launcher: ^6.3.3
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
+  geolocator: ^14.0.2
 dev_dependencies:
   flutter_test:
     sdk: flutter
