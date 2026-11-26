@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tracop_mobile/features/auth/domain/entities/user.dart';
+import 'package:tracop_mobile/features/auth/domain/repository/auth_repository.dart';
+import 'package:tracop_mobile/features/auth/presentation/providers/auth_provider.dart';
 import 'package:tracop_mobile/features/backoffice/presentation/backoffice_provider.dart';
 import 'package:tracop_mobile/features/backoffice/presentation/backoffice_screen.dart';
 
@@ -14,10 +17,12 @@ void main() {
     List<dynamic>? products,
     List<dynamic>? audit,
     Map<String, dynamic>? logistics,
+    String role = 'admin',
   }) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          authProvider.overrideWith((ref) => _SignedIn(role)),
           backofficeMetricsProvider
               .overrideWith((ref) async => backofficeMetricsFixture),
           backofficeCategoriesProvider.overrideWith(
@@ -88,4 +93,69 @@ void main() {
 
     expect(find.textContaining('Primero crea una categoría'), findsOneWidget);
   });
+
+  testWidgets('finance sees catalog as read only', (tester) async {
+    await pumpSection(tester, BackofficeSection.catalog, role: 'finance');
+
+    expect(find.text('Vista de solo lectura'), findsOneWidget);
+    final createButton = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Nuevo producto'));
+    expect(createButton.onPressed, isNull);
+    expect(
+        tester
+            .widget<IconButton>(
+                find.widgetWithIcon(IconButton, Icons.edit_outlined))
+            .onPressed,
+        isNull);
+  });
+
+  testWidgets('catalog search filters products without changing server data',
+      (tester) async {
+    await pumpSection(tester, BackofficeSection.catalog);
+
+    await tester.enterText(
+        find.byType(TextField).first, 'Producto inexistente');
+    await tester.pump();
+
+    expect(find.text('Tomate chonto'), findsNothing);
+    expect(find.text('No hay productos en el catálogo.'), findsOneWidget);
+  });
+
+  testWidgets('creating a category closes only the dialog', (tester) async {
+    await pumpSection(tester, BackofficeSection.catalog);
+    await tester.tap(find.text('Categorías'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Nueva categoría'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Frutas');
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Catálogo curado'), findsOneWidget);
+    expect(find.text('Categorías'), findsOneWidget);
+  });
+}
+
+class _SignedIn extends AuthNotifier {
+  _SignedIn(String role) : super(_NoAuthRepository()) {
+    state = AsyncValue.data(AuthSession(
+      accessToken: 'test-access-token',
+      refreshToken: 'test-refresh-token',
+      accessTokenExpiresIn: 900,
+      refreshTokenExpiresAt: DateTime.utc(2030),
+      user: User(
+        id: 'user',
+        role: role,
+        fullName: 'Prueba',
+        phone: '+573000000000',
+        status: 'active',
+        locale: 'es-CO',
+      ),
+    ));
+  }
+}
+
+class _NoAuthRepository implements AuthRepository {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
