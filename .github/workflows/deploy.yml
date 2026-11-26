@@ -1,0 +1,75 @@
+name: Deploy (CD)
+
+# Compila el APK (Android) y la versión web, y publica el APK como artefacto y Release.
+# No sube a AWS desde GitHub Actions: en Learner Lab no hay IAM para eso. La web se
+# sincroniza a S3 a mano desde tu máquina (ver abajo), con las credenciales del lab.
+#
+# Variables (Settings → Secrets and variables → Actions → Variables):
+#   API_BASE_URL   → URL del backend desplegado (terraform output -raw api_url)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build APK and Web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate Drift code
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Build APK (release)
+        run: flutter build apk --release --dart-define=API_BASE_URL=${{ vars.API_BASE_URL }}
+
+      - name: Build Web (release)
+        run: flutter build web --release --dart-define=API_BASE_URL=${{ vars.API_BASE_URL }}
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tracop-android
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 14
+
+      - name: Upload web artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tracop-web
+          path: build/web
+          retention-days: 14
+
+  release-apk:
+    name: Publish APK release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: tracop-android
+          path: build
+
+      - name: Create GitHub Release with APK
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: demo-${{ github.run_number }}
+          files: build/app-release.apk
+          generate_release_notes: true
+
+# Sincronizar la web a S3 (manual, desde tu máquina con las credenciales del lab):
+#   flutter build web --release --dart-define=API_BASE_URL="$API_BASE_URL"
+#   aws s3 sync build/web s3://"$WEB_BUCKET" --delete
+# WEB_BUCKET sale de `terraform output -raw web_bucket` en el repo del backend.
