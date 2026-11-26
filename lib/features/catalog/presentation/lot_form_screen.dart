@@ -12,6 +12,7 @@ import '../../../app/back_guard.dart';
 import '../../../app/motion.dart';
 import '../../../app/theme.dart';
 import '../../../core/i18n/strings.dart';
+import '../../../core/i18n/formats.dart';
 import '../../../shared/widgets/option_selectors.dart';
 import '../../../core/result/result.dart';
 import '../../auth/presentation/providers/auth_provider.dart';
@@ -28,6 +29,7 @@ import 'lot_error_text.dart';
 import 'providers/catalog_provider.dart';
 import 'providers/lot_management_provider.dart';
 import 'providers/product_proposal_provider.dart';
+import '../../recommendations/presentation/recommendations_provider.dart';
 
 class LotFormScreen extends ConsumerStatefulWidget {
   const LotFormScreen({this.lotId, super.key});
@@ -69,9 +71,57 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
   String? _baseline;
   (double, double)? _profilePoint;
   bool _usingProfilePoint = false;
+  bool _loadingPriceSuggestion = false;
 
   bool get isEditing => widget.isEditing || _draftLotId != null;
   String? get _activeLotId => widget.lotId ?? _draftLotId;
+
+  Future<void> _showPriceSuggestion() async {
+    final productId = _productId;
+    final unit = _unit;
+    if (productId == null || unit == null || _loadingPriceSuggestion) return;
+    setState(() => _loadingPriceSuggestion = true);
+    final repository = ref.read(recommendationsRepositoryProvider);
+    final result = await repository.guard(() =>
+        repository.remote.priceSuggestion(productId: productId, unit: unit));
+    if (!mounted) return;
+    setState(() => _loadingPriceSuggestion = false);
+    result.map(
+      ok: (value) {
+        final suggestion = value.value;
+        if (suggestion['status'] != 'ok') {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text(
+                  'Aún no hay datos suficientes para sugerir un precio.')));
+          return;
+        }
+        showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Precio sugerido'),
+            content: Text(
+                'Rango de referencia: ${AppFormats.moneyText(suggestion['low'].toString())} – ${AppFormats.moneyText(suggestion['high'].toString())}\n\nMediana sugerida: ${AppFormats.moneyText(suggestion['median'].toString())}\nFuente: ${suggestion['citation'] ?? 'Precios observados en TRACOP'}'),
+            actions: [
+              TextButton(
+                onPressed: () =>
+                    Navigator.of(dialogContext, rootNavigator: true).pop(),
+                child: const Text('Cerrar'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  _price.text = suggestion['median'].toString();
+                  Navigator.of(dialogContext, rootNavigator: true).pop();
+                },
+                child: const Text('Usar mediana'),
+              ),
+            ],
+          ),
+        );
+      },
+      err: (failure) => ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(failure.error.message))),
+    );
+  }
 
   // Huella de lo escrito para saber si hay cambios sin guardar.
   String get _signature => [
@@ -992,6 +1042,26 @@ class _LotFormScreenState extends ConsumerState<LotFormScreen> {
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      onPressed: _productId == null ||
+                              _unit == null ||
+                              _submitting ||
+                              _loadingPriceSuggestion
+                          ? null
+                          : _showPriceSuggestion,
+                      icon: _loadingPriceSuggestion
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.insights_outlined),
+                      label: const Text('Consultar precio sugerido'),
+                    ),
                   ),
                   if (estimatedSubtotal != null) ...[
                     const SizedBox(height: 14),

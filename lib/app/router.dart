@@ -33,6 +33,8 @@ import '../features/payments/presentation/screens/payments_dashboard_screen.dart
 import '../features/payments/presentation/screens/settlements_screen.dart';
 import '../features/payments/presentation/screens/staff_payment_detail_screen.dart';
 import '../features/backoffice/presentation/backoffice_screen.dart';
+import '../features/recommendations/presentation/recommendations_screen.dart';
+import '../features/recommendations/presentation/pricing_mappings_screen.dart';
 
 final router = GoRouter(
   initialLocation: '/splash',
@@ -88,6 +90,28 @@ final router = GoRouter(
             context,
             state,
             const NotificationsScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/recomendaciones',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const RoleGate(
+              roles: {'buyer'},
+              child: RecommendationsScreen(),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/backoffice/precios',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const StaffRoleGate(
+              roles: {'operator', 'admin'},
+              child: PricingMappingsScreen(),
+            ),
           ),
         ),
         GoRoute(
@@ -450,6 +474,21 @@ class StaffRoleGate extends ConsumerWidget {
       super.key});
   final Widget child;
   final Set<String> roles;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider);
+    if (auth.isLoading) return const Center(child: CircularProgressIndicator());
+    return roles.contains(auth.valueOrNull?.user.role)
+        ? child
+        : const NotFoundScreen();
+  }
+}
+
+class RoleGate extends ConsumerWidget {
+  const RoleGate({required this.roles, required this.child, super.key});
+  final Set<String> roles;
+  final Widget child;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
