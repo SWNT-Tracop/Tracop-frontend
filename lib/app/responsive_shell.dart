@@ -256,20 +256,27 @@ class ResponsiveShell extends ConsumerWidget {
     final destination = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
+      // The admin has nine tools: let the sheet grow and scroll so none is cut off.
+      isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
-        child: Wrap(children: [
-          const ListTile(
-            title: Text('Más herramientas'),
-            subtitle: Text('Accesos administrativos'),
-          ),
-          for (final tool in RoleAccess.toolsFor(role))
-            if (_staffToolEntries[tool] case final entry?)
-              ListTile(
-                leading: Icon(entry.icon),
-                title: Text(entry.label),
-                onTap: () => Navigator.pop(sheetContext, entry.path),
-              ),
-        ]),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(sheetContext).height * .85),
+          child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const ListTile(
+              title: Text('Más herramientas'),
+              subtitle: Text('Accesos administrativos'),
+            ),
+            for (final tool in RoleAccess.toolsFor(role))
+              if (_staffToolEntries[tool] case final entry?)
+                ListTile(
+                  leading: Icon(entry.icon),
+                  title: Text(entry.label),
+                  onTap: () => Navigator.pop(sheetContext, entry.path),
+                ),
+          ])),
+        ),
       ),
     );
     if (destination != null && context.mounted) {
