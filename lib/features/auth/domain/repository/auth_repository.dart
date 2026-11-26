@@ -4,7 +4,9 @@ import '../entities/saved_account.dart';
 import '../entities/user.dart';
 
 abstract class AuthRepository {
-  Future<Result<void, DomainFailure>> register(RegisterRequest request);
+  /// The response carries the link to the bot that delivers the code.
+  Future<Result<RequestOtpResponse, DomainFailure>> register(
+      RegisterRequest request);
   Future<Result<RequestOtpResponse, DomainFailure>> requestOtp(
       RequestOtpRequest request);
   Future<Result<AuthSession, DomainFailure>> verifyOtp(
