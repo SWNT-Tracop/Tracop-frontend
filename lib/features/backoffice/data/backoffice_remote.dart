@@ -165,4 +165,24 @@ class BackofficeRemoteDataSource {
 
   Future<Map<String, dynamic>> stopLocation(String tripId, String stopId) =>
       _get('/logistics/trips/$tripId/stops/$stopId/location');
+
+  /// GET /staff/users?phone= (admin): id, role, status, name and the last 4 digits.
+  Future<Map<String, dynamic>> findAccount(String phone) =>
+      _get('/staff/users', query: {'phone': phone});
+
+  Future<Map<String, dynamic>> _post(
+          String path, Map<String, dynamic> body) async =>
+      Map<String, dynamic>.from(
+          (await _client.instance.post(path, data: body)).data as Map);
+
+  Future<Map<String, dynamic>> changeAccountRole(
+          String userId, String role, String reason) =>
+      _post('/staff/users/$userId/role', {'role': role, 'reason': reason});
+
+  Future<Map<String, dynamic>> suspendAccount(String userId, String reason) =>
+      _post('/staff/users/$userId/suspend', {'reason': reason});
+
+  Future<Map<String, dynamic>> reactivateAccount(
+          String userId, String reason) =>
+      _post('/staff/users/$userId/reactivate', {'reason': reason});
 }

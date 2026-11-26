@@ -76,9 +76,11 @@ void main() {
       StaffTool.trust,
       StaffTool.catalog,
       StaffTool.proposals,
+      StaffTool.logistics,
       StaffTool.parameters,
       StaffTool.pricing,
       StaffTool.audit,
+      StaffTool.accounts,
     ]);
     expect(RoleAccess.toolsFor('buyer'), isEmpty);
     expect(RoleAccess.canEditParameters('admin'), isTrue);
@@ -121,11 +123,10 @@ void main() {
     ]);
   });
 
-  testWidgets('the admin sees the audit but not the logistics desk',
+  testWidgets('the admin sees the audit, logistics and accounts',
       (tester) async {
     await _pumpShell(tester, 'admin');
     final adminTools = await _staffTools(tester);
-    expect(adminTools, contains('Auditoría'));
-    expect(adminTools, isNot(contains('Logística')));
+    expect(adminTools, containsAll(['Auditoría', 'Logística', 'Cuentas']));
   });
 }

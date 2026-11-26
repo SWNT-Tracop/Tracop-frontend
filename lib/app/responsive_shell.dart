@@ -244,6 +244,11 @@ class ResponsiveShell extends ConsumerWidget {
       label: 'Auditoría',
       icon: Icons.history_outlined
     ),
+    StaffTool.accounts: (
+      path: '/backoffice/cuentas',
+      label: 'Cuentas',
+      icon: Icons.manage_accounts_outlined
+    ),
   };
 
   Future<void> _showStaffMenu(BuildContext context, String? role) async {
