@@ -119,6 +119,15 @@ final router = GoRouter(
           ),
         ),
         GoRoute(
+          path: '/backoffice/catalogo',
+          pageBuilder: (context, state) => _routePage(
+            context,
+            state,
+            const StaffRoleGate(
+                child: BackofficeScreen(section: BackofficeSection.catalog)),
+          ),
+        ),
+        GoRoute(
           path: '/backoffice/logistica',
           pageBuilder: (context, state) => _routePage(
             context,

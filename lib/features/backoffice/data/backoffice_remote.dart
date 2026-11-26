@@ -61,6 +61,11 @@ class BackofficeRemoteDataSource {
               data: {'reason': reason}))
           .data as Map);
 
+  Future<Map<String, dynamic>> hideRating(String ratingId) async =>
+      Map<String, dynamic>.from(
+          (await _client.instance.post('/trust/staff/ratings/$ratingId/hide'))
+              .data as Map);
+
   Future<List<dynamic>> proposals() async =>
       (await _client.instance.get('/catalog/product-proposals')).data as List;
 
@@ -85,6 +90,28 @@ class BackofficeRemoteDataSource {
       }))
           .data as List);
 
+  Future<Map<String, dynamic>> createCategory(
+          Map<String, dynamic> body) async =>
+      Map<String, dynamic>.from(
+          (await _client.instance.post('/catalog/categories', data: body)).data
+              as Map);
+
+  Future<Map<String, dynamic>> updateCategory(String id, String name) async =>
+      Map<String, dynamic>.from((await _client.instance
+              .patch('/catalog/categories/$id', data: {'name': name}))
+          .data as Map);
+
+  Future<Map<String, dynamic>> createProduct(Map<String, dynamic> body) async =>
+      Map<String, dynamic>.from(
+          (await _client.instance.post('/catalog/products', data: body)).data
+              as Map);
+
+  Future<Map<String, dynamic>> updateProduct(
+          String id, Map<String, dynamic> body) async =>
+      Map<String, dynamic>.from(
+          (await _client.instance.patch('/catalog/products/$id', data: body))
+              .data as Map);
+
   Future<List<dynamic>> carriers({int limit = 100}) async =>
       ((await _client.instance.get('/logistics/carriers', queryParameters: {
         'limit': limit,
@@ -97,6 +124,29 @@ class BackofficeRemoteDataSource {
       }))
           .data as List);
 
+  Future<Map<String, dynamic>> trip(String id) => _get('/logistics/trips/$id');
+
+  Future<List<dynamic>> tripStops(String id) async =>
+      (await _client.instance.get('/logistics/trips/$id/stops')).data as List;
+
+  Future<Map<String, dynamic>> reassignTrip(
+          String id, String carrierId, int expectedVersion) async =>
+      Map<String, dynamic>.from(
+          (await _client.instance.post('/logistics/trips/$id/reassign', data: {
+        'carrierId': carrierId,
+        'expectedVersion': expectedVersion,
+      }))
+              .data as Map);
+
+  Future<Map<String, dynamic>> cancelTrip(
+          String id, int expectedVersion, String reason) async =>
+      Map<String, dynamic>.from(
+          (await _client.instance.post('/logistics/trips/$id/cancel', data: {
+        'expectedVersion': expectedVersion,
+        'reason': reason,
+      }))
+              .data as Map);
+
   Future<Map<String, dynamic>> conflicts() => _get('/logistics/conflicts');
 
   Future<List<dynamic>> incidents({int limit = 100}) async =>
@@ -104,4 +154,9 @@ class BackofficeRemoteDataSource {
         'limit': limit,
       }))
           .data as List);
+
+  Future<Map<String, dynamic>> resolveIncident(String id) async =>
+      Map<String, dynamic>.from(
+          (await _client.instance.post('/logistics/incidents/$id/resolve')).data
+              as Map);
 }

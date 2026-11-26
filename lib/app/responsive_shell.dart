@@ -93,6 +93,11 @@ class ResponsiveShell extends ConsumerWidget {
                 label: 'Confianza',
                 icon: Icons.verified_user_outlined
               ),
+              const (
+                path: '/backoffice/catalogo',
+                label: 'Catálogo',
+                icon: Icons.category_outlined
+              ),
               _staffDestinations[3],
             ]
           : role == 'carrier'

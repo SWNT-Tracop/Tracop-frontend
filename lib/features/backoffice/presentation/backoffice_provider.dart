@@ -49,6 +49,24 @@ final backofficeProposalsProvider =
       ok: (value) => value.value, err: (failure) => throw failure.error);
 });
 
+final backofficeCategoriesProvider =
+    FutureProvider.autoDispose<List<dynamic>>((ref) async {
+  ref.watch(authProvider);
+  final repository = ref.read(backofficeRepositoryProvider);
+  final result = await repository.guard(repository.remote.categories);
+  return result.map(
+      ok: (value) => value.value, err: (failure) => throw failure.error);
+});
+
+final backofficeProductsProvider =
+    FutureProvider.autoDispose<List<dynamic>>((ref) async {
+  ref.watch(authProvider);
+  final repository = ref.read(backofficeRepositoryProvider);
+  final result = await repository.guard(repository.remote.products);
+  return result.map(
+      ok: (value) => value.value, err: (failure) => throw failure.error);
+});
+
 final backofficeAuditProvider =
     FutureProvider.autoDispose<List<dynamic>>((ref) async {
   ref.watch(authProvider);
