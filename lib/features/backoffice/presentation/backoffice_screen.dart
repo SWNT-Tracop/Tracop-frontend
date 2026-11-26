@@ -556,20 +556,161 @@ class _ProductTile extends ConsumerWidget {
 }
 
 Future<void> _createProduct(BuildContext context, WidgetRef ref) async {
-  final name = await _textValue(context, 'Nuevo producto', '');
-  if (name == null) return;
-  final categories = await ref.read(backofficeCategoriesProvider.future);
-  if (categories.isEmpty || !context.mounted) return;
-  final categoryId = _map(categories.first)['id']?.toString();
-  if (categoryId == null) return;
-  await ref.read(backofficeRepositoryProvider).remote.createProduct({
-    'id': const Uuid().v7(),
-    'categoryId': categoryId,
-    'name': name,
-    'unit': 'kg',
-    'attributes': <String, dynamic>{},
-  });
-  ref.invalidate(backofficeProductsProvider);
+  try {
+    final draft = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _ProductFormDialog(
+        categories: ref.read(backofficeCategoriesProvider.future),
+      ),
+    );
+    if (draft == null || !context.mounted) return;
+
+    final result = await ref.read(backofficeRepositoryProvider).guard(
+          () => ref.read(backofficeRepositoryProvider).remote.createProduct({
+            'id': const Uuid().v7(),
+            ...draft,
+          }),
+        );
+    if (!context.mounted) return;
+    result.map(
+      ok: (_) {
+        ref.invalidate(backofficeProductsProvider);
+        _showBackofficeMessage(context, 'Producto creado correctamente.');
+      },
+      err: (failure) => _showBackofficeMessage(context, failure.error.message),
+    );
+  } catch (_) {
+    if (context.mounted) {
+      _showBackofficeMessage(context,
+          'No se pudo abrir o guardar el producto. Revisa la conexión.');
+    }
+  }
+}
+
+class _ProductFormDialog extends StatefulWidget {
+  const _ProductFormDialog({required this.categories});
+
+  final Future<List<dynamic>> categories;
+
+  @override
+  State<_ProductFormDialog> createState() => _ProductFormDialogState();
+}
+
+class _ProductFormDialogState extends State<_ProductFormDialog> {
+  final nameController = TextEditingController();
+  String? categoryId;
+  String unit = 'kg';
+
+  static const units = [
+    'kg',
+    'g',
+    'lb',
+    'und',
+    'docena',
+    'arroba',
+    'quintal',
+    'caja',
+    'mano',
+    'bulto',
+  ];
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Nuevo producto'),
+        content: SizedBox(
+          width: 420,
+          child: FutureBuilder<List<dynamic>>(
+            future: widget.categories,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const SizedBox(
+                  height: 120,
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              if (snapshot.hasError) {
+                return const Text(
+                    'No se pudieron cargar las categorías. Cierra e inténtalo de nuevo.');
+              }
+              final categories = snapshot.data ?? const <dynamic>[];
+              final validCategories = categories
+                  .map(_map)
+                  .where((item) => (item['id']?.toString() ?? '').isNotEmpty)
+                  .toList();
+              if (validCategories.isEmpty) {
+                return const Text(
+                    'Primero crea una categoría para poder registrar el producto.');
+              }
+              categoryId ??= validCategories.first['id'].toString();
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    autofocus: true,
+                    maxLength: 120,
+                    decoration: const InputDecoration(labelText: 'Nombre'),
+                  ),
+                  DropdownButtonFormField<String>(
+                    initialValue: categoryId,
+                    decoration: const InputDecoration(labelText: 'Categoría'),
+                    items: [
+                      for (final item in validCategories)
+                        DropdownMenuItem(
+                          value: item['id'].toString(),
+                          child: Text(item['name']?.toString() ?? 'Sin nombre'),
+                        ),
+                    ],
+                    onChanged: (value) => setState(() => categoryId = value),
+                  ),
+                  DropdownButtonFormField<String>(
+                    initialValue: unit,
+                    decoration: const InputDecoration(labelText: 'Unidad'),
+                    items: [
+                      for (final value in units)
+                        DropdownMenuItem(value: value, child: Text(value)),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setState(() => unit = value);
+                    },
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final name = nameController.text.trim();
+              if (name.isEmpty || categoryId == null) return;
+              Navigator.pop(context, {
+                'categoryId': categoryId,
+                'name': name,
+                'unit': unit,
+                'attributes': <String, dynamic>{},
+              });
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      );
+}
+
+void _showBackofficeMessage(BuildContext context, String message) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message)));
 }
 
 Future<String?> _textValue(

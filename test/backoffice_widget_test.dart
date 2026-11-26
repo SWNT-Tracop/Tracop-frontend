@@ -78,4 +78,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('trip-1'), findsOneWidget);
   });
+
+  testWidgets('new product explains when there are no categories',
+      (tester) async {
+    await pumpSection(tester, BackofficeSection.catalog, categories: const []);
+
+    await tester.tap(find.text('Nuevo producto'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Primero crea una categoría'), findsOneWidget);
+  });
 }
