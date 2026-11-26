@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/theme.dart';
+import '../../core/utils/text_search.dart';
 
 @immutable
 class SelectorOption<T> {
@@ -142,9 +143,9 @@ class _SelectorSheetState<T> extends State<_SelectorSheet<T>> {
 
   @override
   Widget build(BuildContext context) {
-    final query = _search.text.trim().toLowerCase();
+    final query = foldForSearch(_search.text);
     final visible = widget.options
-        .where((option) => option.label.toLowerCase().contains(query))
+        .where((option) => foldForSearch(option.label).contains(query))
         .toList(growable: false);
     return Padding(
       padding: EdgeInsets.fromLTRB(
