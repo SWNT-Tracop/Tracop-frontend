@@ -211,6 +211,18 @@ class SyncService {
     }
   }
 
+  /// Whether an operation of this user is waiting and already due (its back-off elapsed).
+  Future<bool> hasPendingDue(String userId) async {
+    final row = await (_database.select(_database.outboxOperations)
+          ..where((row) =>
+              row.ownerUserId.equals(userId) &
+              row.status.equals('pending') &
+              row.nextAttemptAt.isSmallerOrEqualValue(DateTime.now().toUtc()))
+          ..limit(1))
+        .getSingleOrNull();
+    return row != null;
+  }
+
   Future<String> currentCursor(String userId) => _readCursor(userId);
 
   Future<DateTime?> lastSuccessfulSync(String userId) async {

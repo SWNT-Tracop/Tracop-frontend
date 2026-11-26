@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/i18n/strings.dart';
 import '../features/auth/presentation/providers/auth_provider.dart';
 import '../core/sync/sync_provider.dart';
+import '../core/sync/pending_sync_scheduler.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../features/logistics/presentation/logistics_provider.dart';
 import '../features/catalog/presentation/providers/catalog_provider.dart';
@@ -22,12 +23,20 @@ class TracopApp extends ConsumerStatefulWidget {
   ConsumerState<TracopApp> createState() => _TracopAppState();
 }
 
-class _TracopAppState extends ConsumerState<TracopApp> {
+class _TracopAppState extends ConsumerState<TracopApp>
+    with WidgetsBindingObserver {
   late final StreamSubscription<List<ConnectivityResult>> _connectivity;
+  late final PendingSyncScheduler _pendingSync;
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     authInvalidationSignal.addListener(_onSessionExpired);
+    _pendingSync = PendingSyncScheduler(
+      ticks: Stream<void>.periodic(pendingSyncCheckInterval),
+      hasPending: _hasPendingSync,
+      sync: _sync,
+    );
     _connectivity = Connectivity().onConnectivityChanged.listen((results) {
       ref.invalidate(homeConnectivityProvider);
       if (results.any((result) => result != ConnectivityResult.none)) {
@@ -37,7 +46,20 @@ class _TracopAppState extends ConsumerState<TracopApp> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _pendingSync.resumed();
+  }
+
+  Future<bool> _hasPendingSync() async {
+    final session = ref.read(authProvider).valueOrNull;
+    if (session?.accessToken.isEmpty != false) return false;
+    return ref.read(syncServiceProvider).hasPendingDue(session!.user.id);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _pendingSync.dispose();
     authInvalidationSignal.removeListener(_onSessionExpired);
     _connectivity.cancel();
     super.dispose();

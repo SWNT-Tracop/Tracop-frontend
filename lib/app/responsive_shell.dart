@@ -9,6 +9,7 @@ import '../features/payments/domain/payment_permissions.dart';
 import 'back_guard.dart';
 import 'messenger.dart';
 import 'theme.dart';
+import '../core/auth/role_access.dart';
 
 class ResponsiveShell extends ConsumerWidget {
   const ResponsiveShell(
@@ -81,25 +82,9 @@ class ResponsiveShell extends ConsumerWidget {
   List<({String path, String label, IconData icon})> _destinationsFor(
           String? role) =>
       PaymentPermissions.isStaff(role)
-          ? [
-              ..._staffDestinations.take(3),
-              const (
-                path: '/backoffice/resumen',
-                label: 'Operación',
-                icon: Icons.dashboard_outlined
-              ),
-              const (
-                path: '/backoffice/verificaciones',
-                label: 'Confianza',
-                icon: Icons.verified_user_outlined
-              ),
-              const (
-                path: '/backoffice/catalogo',
-                label: 'Catálogo',
-                icon: Icons.category_outlined
-              ),
-              _staffDestinations[3],
-            ]
+          // Cuatro pestañas para todo el personal; el resto va en «Más herramientas», filtrado
+          // por rol (RoleAccess), para que las etiquetas quepan y nadie vea pantallas con 403.
+          ? _staffDestinations
           : role == 'carrier'
               ? const [
                   (
@@ -127,7 +112,9 @@ class ResponsiveShell extends ConsumerWidget {
                       label: 'Pedidos',
                       icon: Icons.inbox_outlined
                     ),
-                  ..._baseDestinations.skip(2),
+                  for (final item in _baseDestinations.skip(2))
+                    if (item.path != '/lotes' || RoleAccess.hasOwnLots(role))
+                      item,
                 ];
 
   void _onConnectivityChange(
@@ -215,8 +202,52 @@ class ResponsiveShell extends ConsumerWidget {
     }
   }
 
+  static const _staffToolEntries =
+      <StaffTool, ({String path, String label, IconData icon})>{
+    StaffTool.operations: (
+      path: '/backoffice/resumen',
+      label: 'Operación',
+      icon: Icons.dashboard_outlined
+    ),
+    StaffTool.trust: (
+      path: '/backoffice/verificaciones',
+      label: 'Confianza',
+      icon: Icons.verified_user_outlined
+    ),
+    StaffTool.catalog: (
+      path: '/backoffice/catalogo',
+      label: 'Catálogo',
+      icon: Icons.category_outlined
+    ),
+    StaffTool.proposals: (
+      path: '/backoffice/propuestas',
+      label: 'Propuestas',
+      icon: Icons.fact_check_outlined
+    ),
+    StaffTool.logistics: (
+      path: '/backoffice/logistica',
+      label: 'Logística',
+      icon: Icons.local_shipping_outlined
+    ),
+    StaffTool.parameters: (
+      path: '/backoffice/parametros',
+      label: 'Parámetros',
+      icon: Icons.tune_outlined
+    ),
+    StaffTool.pricing: (
+      path: '/backoffice/precios',
+      label: 'Precios',
+      icon: Icons.insights_outlined
+    ),
+    StaffTool.audit: (
+      path: '/backoffice/auditoria',
+      label: 'Auditoría',
+      icon: Icons.history_outlined
+    ),
+  };
+
   Future<void> _showStaffMenu(BuildContext context, String? role) async {
-    if (!PaymentPermissions.isStaff(role)) return;
+    if (!RoleAccess.isStaff(role)) return;
     final destination = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
@@ -226,33 +257,13 @@ class ResponsiveShell extends ConsumerWidget {
             title: Text('Más herramientas'),
             subtitle: Text('Accesos administrativos'),
           ),
-          ListTile(
-            leading: const Icon(Icons.local_shipping_outlined),
-            title: const Text('Logística'),
-            onTap: () => Navigator.pop(sheetContext, '/backoffice/logistica'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.fact_check_outlined),
-            title: const Text('Propuestas'),
-            onTap: () => Navigator.pop(sheetContext, '/backoffice/propuestas'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.tune_outlined),
-            title: const Text('Parámetros'),
-            onTap: () => Navigator.pop(sheetContext, '/backoffice/parametros'),
-          ),
-          if (role == 'operator' || role == 'admin')
-            ListTile(
-              leading: const Icon(Icons.insights_outlined),
-              title: const Text('Precios'),
-              onTap: () => Navigator.pop(sheetContext, '/backoffice/precios'),
-            ),
-          if (role == 'admin')
-            ListTile(
-              leading: const Icon(Icons.history_outlined),
-              title: const Text('Auditoría'),
-              onTap: () => Navigator.pop(sheetContext, '/backoffice/auditoria'),
-            ),
+          for (final tool in RoleAccess.toolsFor(role))
+            if (_staffToolEntries[tool] case final entry?)
+              ListTile(
+                leading: Icon(entry.icon),
+                title: Text(entry.label),
+                onTap: () => Navigator.pop(sheetContext, entry.path),
+              ),
         ]),
       ),
     );

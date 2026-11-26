@@ -124,7 +124,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               keyboardType: TextInputType.phone,
               decoration: const InputDecoration(
                   labelText: 'Celular',
-                  hintText: '300 123 4567',
+                  hintText: 'Ej.: 300 123 4567',
                   prefixIcon: Icon(Icons.phone_outlined))),
           if (_error != null) _ErrorText(_error!),
           const SizedBox(height: 20),
@@ -217,7 +217,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               controller: _phone,
               keyboardType: TextInputType.phone,
               decoration: const InputDecoration(
-                  labelText: 'Celular', hintText: '300 123 4567')),
+                  labelText: 'Celular', hintText: 'Ej.: 300 123 4567')),
           const SizedBox(height: 14),
           const Text('¿Cómo participarás?'),
           const SizedBox(height: 8),
